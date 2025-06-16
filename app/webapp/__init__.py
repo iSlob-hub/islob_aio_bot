@@ -1,3 +1,0 @@
-"""
-WebApp server package
-"""
