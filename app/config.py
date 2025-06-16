@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # MongoDB settings
     # Connection details
-    MONGODB_HOST: str = "localhost"
+    MONGODB_HOST: str = "mongodb"
     MONGODB_PORT: int = 27017
     MONGODB_USER: Optional[str] = None
     MONGODB_PASSWORD: Optional[str] = None

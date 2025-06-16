@@ -5,6 +5,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReplyKeyboardRemove,
+    URLInputFile,
 )
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -14,6 +15,11 @@ from states import TrainingState
 from db.models import TrainingSession
 from keyboards import get_main_menu_keyboard
 import datetime
+import os
+from pathlib import Path
+
+
+app_root = Path(__file__).resolve().parent.parent
 
 
 training_router = Router()
@@ -89,6 +95,17 @@ async def handle_how_do_you_feel_before(
 
     await training_session.save()
     training_session_id = training_session.id
+
+    # Send test PDF file to user
+
+    training_pdf = URLInputFile(
+        url="https://storage.googleapis.com/islobbot_files/test_pdf.pdf",
+        filename="training_session.pdf",
+    )
+    await callback_query.message.answer_document(
+        document=training_pdf,
+        caption="Ось твій тренувальний план на сьогодні."
+    )
 
     await callback_query.message.answer(
         text="Тренування розпочато! Для завершення - натисни кнопку нижче.",
@@ -251,7 +268,11 @@ async def handle_do_you_have_any_pain(
         text=(
             f"Дякую за тренування!"
             f"Тренування тривало {training_session.training_duration:.2f} хвилин.\n"
-        ),
+        )
+    )
+
+    await callback_query.message.answer(
+        text="Повертаємося до головного меню.",
         reply_markup=await get_main_menu_keyboard(),
     )
 
