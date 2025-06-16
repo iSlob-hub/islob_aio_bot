@@ -12,6 +12,28 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    networks:
+      - islob-network
+
+  islob-bot:
+    build: .
+    container_name: islob-bot
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - MONGODB_URL=mongodb://root:example@mongodb:27017/islobbotdev?authSource=admin
+      - DATABASE_NAME=islobbotdev
+      - ENVIRONMENT=production
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - islob-network
+
+networks:
+  islob-network:
+    driver: bridge
 
 volumes:
   mongo_data:
