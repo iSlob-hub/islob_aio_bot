@@ -20,9 +20,9 @@ services:
     container_name: islob-bot
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
-      - MONGODB_URL=mongodb://root:example@mongodb:27017/islobbotdev?authSource=admin
-      - DATABASE_NAME=islobbotdev
-      - ENVIRONMENT=production
+      - MONGODB_USER=develop
+      - MONGODB_PASSWORD=test_pass
+      - MONGODB_DB_NAME=islobbotdev
     depends_on:
       - mongodb
     restart: unless-stopped

@@ -32,9 +32,9 @@ class Settings(BaseSettings):
         """Generate the MongoDB connection string based on settings"""
         credentials = ""
         if self.MONGODB_USER and self.MONGODB_PASSWORD:
-            credentials = f"{self.MONGODB_USER}:{self.MONGODB_PASSWORD}@"
+            credentials = f"{self.MONGODB_USER}:{self.MONGODB_PASSWORD}"
 
-        return f"mongodb://{credentials}{self.MONGODB_HOST}:{self.MONGODB_PORT}/{self.MONGODB_DB_NAME}"
+        return f"mongodb://{credentials}@{self.MONGODB_HOST}:{self.MONGODB_PORT}/{self.MONGODB_DB_NAME}?authSource=admin"
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=True
