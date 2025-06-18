@@ -47,16 +47,6 @@ class BotScheduler:
     async def add_jobs(self):
         """Add all scheduled jobs"""
         try:
-            # Frequent task every 10 seconds
-            # self.scheduler.add_job(
-            #     self.frequent_task,
-            #     "interval",
-            #     seconds=10,
-            #     id="frequent_task",
-            #     replace_existing=True,
-            # )
-
-
             self.scheduler.add_job(
                 self.send_morning_notifications,
                 "interval",
@@ -68,8 +58,7 @@ class BotScheduler:
             self.scheduler.add_job(
                 self.send_after_training_notification,
                 "cron",
-                hour=0,
-                minute=44,
+                hour=13,
                 id="after_training_notification",
                 replace_existing=True,
             )
@@ -81,36 +70,6 @@ class BotScheduler:
                 id="too_long_training_notification",
                 replace_existing=True,
             )
-            # # Morning notifications at 9 AM
-            # self.scheduler.add_job(
-            #     self.send_morning_notifications,
-            #     "cron",
-            #     hour=9,
-            #     minute=0,
-            #     id="morning_notifications",
-            #     replace_existing=True,
-            # )
-
-            # # Evening reminders at 6 PM
-            # self.scheduler.add_job(
-            #     self.send_evening_reminders,
-            #     "cron",
-            #     hour=18,
-            #     minute=0,
-            #     id="evening_reminders",
-            #     replace_existing=True,
-            # )
-
-            # # Custom cron: Every Monday at 10 AM for weekly reports
-            # self.scheduler.add_job(
-            #     self.weekly_report,
-            #     "cron",
-            #     day_of_week=0,  # Monday
-            #     hour=10,
-            #     minute=0,
-            #     id="weekly_report",
-            #     replace_existing=True,
-            # )
 
             print("All scheduled jobs added successfully")
 
@@ -213,12 +172,11 @@ class BotScheduler:
         except Exception as e:
             print(f"Failed to send after training notification: {e}")
 
+
     async def send_too_long_training_notification(self):
         now_utc = datetime.now(ZoneInfo("Europe/Kyiv"))
-        cutoff = now_utc - timedelta(minutes=1)
-        print(cutoff)
+        cutoff = now_utc - timedelta(hours=1)
 
-        # 2) Формуємо запит
         sessions = await TrainingSession.find(
             TrainingSession.completed == False,
             TrainingSession.training_warning_message_sent == False,
@@ -229,7 +187,7 @@ class BotScheduler:
             try:
                 await self.bot.send_message(
                     chat_id=session.user_id,
-                    text="Тренування триває вже більше 1 хвилини, будь ласка, заверши його, якщо забув.",
+                    text="Тренування триває вже більше 60 хвилин, будь ласка, заверши його, якщо забув.",
                 )
                 session.training_warning_message_sent = True
                 await session.save()
