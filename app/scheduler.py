@@ -103,9 +103,7 @@ class BotScheduler:
             await notification.save()
             notification_last_sent_date = notification.system_data.get("last_sent_date")
             if notification_last_sent_date:
-                notification_last_sent_date = datetime.strptime(
-                    notification_last_sent_date, "%Y-%m-%d"
-                ).date()
+                notification_last_sent_date = notification_last_sent_date.date()
                 if notification_last_sent_date == datetime.now(tz=zone_info).date():
                     print(
                         f"Skipping notification for {notification.user_id} at {notification_time}, already sent today"
