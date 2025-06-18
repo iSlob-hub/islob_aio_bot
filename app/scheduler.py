@@ -100,7 +100,7 @@ class BotScheduler:
             time_now_str = datetime.now(tz=zone_info).strftime("%H:%M")
             if not notification.system_data:
                 notification.system_data = {}
-                
+            await notification.save()
             notification_last_sent_date = notification.system_data.get("last_sent_date")
             if notification_last_sent_date:
                 notification_last_sent_date = datetime.strptime(
@@ -143,6 +143,7 @@ class BotScheduler:
                 notification.system_data = {
                     "last_sent_date": datetime.now(tz=zone_info).date(),
                 }
+                await notification.save()
             except Exception as e:
                 print(f"Failed to send morning quiz to {recipient}: {e}")
 
