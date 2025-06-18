@@ -15,31 +15,76 @@ from aiogram import Bot, Dispatcher
 from config import settings
 from utils.conversation_tracker_middleware import ConversationTrackerMiddleware
 from aiogram.client.default import DefaultBotProperties
+from scheduler import BotScheduler
+import logging
+import signal
+import sys
+from contextlib import asynccontextmanager
+
+bot_scheduler = None
+bot = None
 
 
 async def main():
-    client = await init_db()
+    global bot_scheduler, bot
 
-    storage = MongoStorage(
-        client=client,
-        db_name=settings.MONGODB_DB_NAME,
-        collection_name="fsm_storage",
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
-    bot = Bot(token=settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-    dp = Dispatcher(storage=storage)
+    try:
+        # Initialize database
+        logging.info("Initializing database...")
+        client = await init_db()
 
-    dp.message.middleware(ConversationTrackerMiddleware())
-    dp.callback_query.middleware(ConversationTrackerMiddleware())
+        # Setup bot storage
+        storage = MongoStorage(
+            client=client,
+            db_name=settings.MONGODB_DB_NAME,
+            collection_name="fsm_storage",
+        )
 
-    dp.include_router(main_router.main_router)
-    dp.include_router(report_problem_router.report_problem_router)
-    dp.include_router(notifications_router.notifications_router)
-    dp.include_router(morning_quiz_router.morning_quiz_router)
-    dp.include_router(training_router.training_router)
+        # Initialize bot and dispatcher
+        bot = Bot(
+            token=settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML")
+        )
+        dp = Dispatcher(storage=storage)
 
-    await dp.start_polling(bot)
+        # Add middleware
+        dp.message.middleware(ConversationTrackerMiddleware())
+        dp.callback_query.middleware(ConversationTrackerMiddleware())
+
+        # Include routers
+        dp.include_router(main_router.main_router)
+        dp.include_router(report_problem_router.report_problem_router)
+        dp.include_router(notifications_router.notifications_router)
+        dp.include_router(morning_quiz_router.morning_quiz_router)
+        dp.include_router(training_router.training_router)
+
+        # Initialize and start scheduler
+        logging.info("Initializing scheduler...")
+        bot_scheduler = BotScheduler(bot=bot, db_client=client)
+        await bot_scheduler.start()
+
+        logging.info("Starting bot polling...")
+
+        # Run bot polling (this will run indefinitely)
+        await dp.start_polling(bot)
+
+    except KeyboardInterrupt:
+        logging.info("Received KeyboardInterrupt")
+    except Exception as e:
+        logging.error(f"Error in main: {e}")
+        raise
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logging.info("Bot stopped by user")
+    except Exception as e:
+        logging.error(f"Fatal error: {e}")
+        sys.exit(1)

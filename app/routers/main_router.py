@@ -137,7 +137,8 @@ async def process_training_menu(message: Message, state: FSMContext) -> None:
                 [
                     KeyboardButton(text=tc.START_TRAINING_BUTTON),
                 ]
-            ]
+            ],
+            resize_keyboard=True,
         ),
     )
     await state.set_state(MainMenuState.training_menu)

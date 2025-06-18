@@ -29,6 +29,7 @@ class ConversationTransition(Document):
 
 class NotificationType(str, Enum):
     DAILY_MORNING_NOTIFICATION = "daily_morning_notification"
+    AFTER_TRAINING_NOTIFICATION = "after_training_notification"
     CUSTOM_NOTIFICATION = "custom_notification"
 
 
@@ -40,6 +41,7 @@ class Notification(Document):
     custom_notification_text: Optional[str] = None
     custom_notification_cron: Optional[str] = None
     custom_notification_execute_once: Optional[bool] = False
+    system_data: Optional[dict] = None
 
     is_active: bool = True
     created_at: datetime = Field(default_factory=datetime.now)
@@ -72,6 +74,7 @@ class TrainingSession(Document):
     training_ended_at: Optional[datetime] = None
     training_duration: Optional[int] = None  # in minutes
     notes: Optional[str] = None
+    training_warning_message_sent: bool = False
 
     # day after training
     do_you_have_soreness: Optional[bool] = None

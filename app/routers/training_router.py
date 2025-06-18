@@ -12,11 +12,12 @@ from aiogram.fsm.context import FSMContext
 import text_constants as tc
 from routers.main_router import MainMenuState
 from states import TrainingState
-from db.models import TrainingSession
+from db.models import TrainingSession, Notification
 from keyboards import get_main_menu_keyboard
 import datetime
 import os
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 
 app_root = Path(__file__).resolve().parent.parent
@@ -90,7 +91,7 @@ async def handle_how_do_you_feel_before(
     training_session = TrainingSession(
         user_id=str(callback_query.from_user.id),
         how_do_you_feel_before=int(rating),
-        training_started_at=datetime.datetime.now(),
+        training_started_at=datetime.datetime.now(tz=ZoneInfo("Europe/Kyiv")),
     )
 
     await training_session.save()
@@ -103,8 +104,7 @@ async def handle_how_do_you_feel_before(
         filename="training_session.pdf",
     )
     await callback_query.message.answer_document(
-        document=training_pdf,
-        caption="Ось твій тренувальний план на сьогодні."
+        document=training_pdf, caption="Ось твій тренувальний план на сьогодні."
     )
 
     await callback_query.message.answer(
@@ -140,11 +140,22 @@ async def finish_training(callback_query: CallbackQuery, state: FSMContext) -> N
         await callback_query.message.answer("Тренування не знайдено.")
         return
 
-    training_session.training_ended_at = datetime.datetime.now()
+    training_session.training_ended_at = datetime.datetime.now(tz=ZoneInfo("Europe/Kyiv"))
 
-    training_session.training_duration = int(round((
-        training_session.training_ended_at - training_session.training_started_at
-    ).total_seconds() / 60, 0))
+    training_session.training_started_at = training_session.training_started_at.astimezone(
+        ZoneInfo("Europe/Kyiv")
+    )
+
+    training_session.training_duration = int(
+        round(
+            ((
+                training_session.training_ended_at
+                - training_session.training_started_at
+            ).total_seconds())
+            / 60,
+            0,
+        )
+    )
     if training_session.training_duration < 1:
         training_session.training_duration = 1
 
@@ -270,6 +281,21 @@ async def handle_do_you_have_any_pain(
             f"Тренування тривало {training_session.training_duration:.2f} хвилин.\n"
         )
     )
+
+    after_training_notification = Notification(
+        user_id=str(callback_query.from_user.id),
+        notification_time="12:00",
+        system_data={
+            "training_session_id": str(training_session.id),
+        },
+        notification_text="",
+        notification_type="after_training_notification",
+    )
+
+    await after_training_notification.save()
+
+    training_session.completed = True
+    await training_session.save()
 
     await callback_query.message.answer(
         text="Повертаємося до головного меню.",
