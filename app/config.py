@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     MONGODB_USER: Optional[str] = None
     MONGODB_PASSWORD: Optional[str] = None
 
+    ENVIRONMENT: Optional[str] = None
+
     # Database name
     MONGODB_DB_NAME: str = "my_app_db"
 
