@@ -98,7 +98,9 @@ class BotScheduler:
         for notification in notifications:
             notification_time = notification.notification_time
             time_now_str = datetime.now(tz=zone_info).strftime("%H:%M")
-
+            if not notification.system_data:
+                notification.system_data = {}
+                
             notification_last_sent_date = notification.system_data.get("last_sent_date")
             if notification_last_sent_date:
                 notification_last_sent_date = datetime.strptime(
