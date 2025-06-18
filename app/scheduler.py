@@ -98,6 +98,17 @@ class BotScheduler:
         for notification in notifications:
             notification_time = notification.notification_time
             time_now_str = datetime.now(tz=zone_info).strftime("%H:%M")
+
+            notification_last_sent_date = notification.system_data.get("last_sent_date")
+            if notification_last_sent_date:
+                notification_last_sent_date = datetime.strptime(
+                    notification_last_sent_date, "%Y-%m-%d"
+                ).date()
+                if notification_last_sent_date == datetime.now(tz=zone_info).date():
+                    print(
+                        f"Skipping notification for {notification.user_id} at {notification_time}, already sent today"
+                    )
+                    continue
             if notification_time != time_now_str:
                 print(
                     f"Skipping notification for {notification.user_id} at {notification_time}, current time is {time_now_str}"
@@ -127,6 +138,9 @@ class BotScheduler:
                     ),
                 )
                 print(f"✅ Sent morning quiz to {recipient}")
+                notification.system_data = {
+                    "last_sent_date": datetime.now(tz=zone_info).date(),
+                }
             except Exception as e:
                 print(f"Failed to send morning quiz to {recipient}: {e}")
 
