@@ -59,7 +59,9 @@ class BotScheduler:
             self.scheduler.add_job(
                 self.send_after_training_notification,
                 "cron",
-                hour=13,
+                hour=15,
+                minute=0,
+                seconds=0,
                 id="after_training_notification",
                 replace_existing=True,
             )

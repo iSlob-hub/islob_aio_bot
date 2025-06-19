@@ -11,7 +11,7 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 import text_constants as tc
 from routers.main_router import MainMenuState
-from states import TrainingState
+from states import TrainingState, AfterTrainingState
 from db.models import TrainingSession, Notification
 from keyboards import get_main_menu_keyboard
 import datetime
@@ -299,6 +299,108 @@ async def handle_do_you_have_any_pain(
 
     await callback_query.message.answer(
         text="Повертаємося до головного меню.",
+        reply_markup=await get_main_menu_keyboard(),
+    )
+
+    await callback_query.answer()
+    await state.clear()
+    await state.set_state(MainMenuState.main_menu)
+
+
+@training_router.callback_query(
+    F.data.startswith("start_after_training_quiz_"),
+)
+async def after_training_quiz(callback_query: CallbackQuery, state: FSMContext) -> None:
+    training_session_id = callback_query.data.split("_")[-1]
+    training_session = await TrainingSession.get(training_session_id)
+
+    if not training_session:
+        await callback_query.message.answer("Тренування не знайдено.")
+        return
+
+    await callback_query.message.edit_text(
+        text="У тебе є крепатура?",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Так", callback_data="do_you_have_soreness_yes"
+                    ),
+                    InlineKeyboardButton(
+                        text="Ні", callback_data="do_you_have_soreness_no"
+                    ),
+                ]
+            ]
+        ),
+    )
+    await state.update_data(training_session_id=training_session_id)
+    await state.set_state(AfterTrainingState.do_you_have_soreness)
+
+
+@training_router.callback_query(
+    F.data.startswith("do_you_have_soreness_"),
+    StateFilter(AfterTrainingState.do_you_have_soreness),
+)
+async def handle_do_you_have_soreness(
+    callback_query: CallbackQuery, state: FSMContext
+) -> None:
+    answer = callback_query.data.split("_")[-1]
+    state_data = await state.get_data()
+    training_session_id = state_data.get("training_session_id")
+    training_session = await TrainingSession.get(training_session_id)
+
+    if not training_session:
+        await callback_query.message.answer("Тренування не знайдено.")
+        return
+
+    training_session.do_you_have_soreness = answer == "yes"
+    await training_session.save()
+
+    if training_session.do_you_have_soreness:
+        admin_chat_id = "-4989990832"
+        await callback_query.bot.send_message(
+            chat_id=admin_chat_id,
+            text=(
+                f"Користувач {callback_query.from_user.full_name} @{callback_query.from_user.username} "
+                f"({callback_query.from_user.id}) відчуває крепатуру після тренування."
+            ),
+        )
+
+    await callback_query.message.edit_text(
+        text="Оціни свій рівень стресу після тренування (1-10):",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text=str(i), callback_data=f"stress_level_{i}")
+                    for i in range(1, 11)
+                ]
+            ]
+        ),
+    )
+    await state.set_state(AfterTrainingState.stress_level)
+
+
+@training_router.callback_query(
+    F.data.startswith("stress_level_"),
+    StateFilter(AfterTrainingState.stress_level),
+)
+async def handle_stress_level(
+    callback_query: CallbackQuery, state: FSMContext
+) -> None:
+    stress_level = int(callback_query.data.split("_")[-1])
+    state_data = await state.get_data()
+    training_session_id = state_data.get("training_session_id")
+    training_session = await TrainingSession.get(training_session_id)
+
+    if not training_session:
+        await callback_query.message.answer("Тренування не знайдено.")
+        return
+
+    training_session.stress_level = stress_level
+    await training_session.save()
+
+    await callback_query.message.answer(
+        text="Дякую за відповіді! Гарного дня!",
         reply_markup=await get_main_menu_keyboard(),
     )
 

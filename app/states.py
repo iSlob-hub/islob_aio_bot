@@ -16,6 +16,7 @@ class TrainingState(StatesGroup):
     training_started = State()
     how_hard_was_training = State()
     do_you_have_any_pain = State()
+    do_you_have_soreness = State()
 
 
 class AfterTrainingState(StatesGroup):
