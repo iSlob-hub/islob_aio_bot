@@ -61,7 +61,7 @@ class BotScheduler:
                 "cron",
                 hour=15,
                 minute=0,
-                seconds=0,
+                second=0,
                 id="after_training_notification",
                 replace_existing=True,
             )
