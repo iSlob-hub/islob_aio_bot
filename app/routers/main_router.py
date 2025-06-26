@@ -11,11 +11,11 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
 )
-from db.models import User, Notification, NotificationType, MorningQuiz
-from keyboards import get_main_menu_keyboard, get_notifications_menu_keyboard
-import text_constants as tc
-from utils.bot_utils import is_valid_morning_time
-from states import NotificationsState
+from app.db.models import User, Notification, NotificationType, MorningQuiz
+from app.keyboards import get_main_menu_keyboard, get_notifications_menu_keyboard
+import app.text_constants as tc
+from app.utils.bot_utils import is_valid_morning_time
+from app.states import NotificationsState
 import datetime
 
 

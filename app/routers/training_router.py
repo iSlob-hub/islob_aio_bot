@@ -9,11 +9,11 @@ from aiogram.types import (
 )
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-import text_constants as tc
-from routers.main_router import MainMenuState
-from states import TrainingState, AfterTrainingState
-from db.models import TrainingSession, Notification
-from keyboards import get_main_menu_keyboard
+import app.text_constants as tc
+from app.routers.main_router import MainMenuState
+from app.states import TrainingState, AfterTrainingState
+from app.db.models import TrainingSession, Notification, User
+from app.keyboards import get_main_menu_keyboard
 import datetime
 import os
 from pathlib import Path
@@ -93,6 +93,7 @@ async def handle_how_do_you_feel_before(
         how_do_you_feel_before=int(rating),
         training_started_at=datetime.datetime.now(tz=ZoneInfo("Europe/Kyiv")),
     )
+    user = await User.find_one(User.telegram_id == str(callback_query.from_user.id))
 
     await training_session.save()
     training_session_id = training_session.id
@@ -100,7 +101,7 @@ async def handle_how_do_you_feel_before(
     # Send test PDF file to user
 
     training_pdf = URLInputFile(
-        url="https://storage.googleapis.com/islobbot_files/test_pdf.pdf",
+        url=f"https://grumpy-pens-notice.loca.lt{user.training_file_url}",
         filename="training_session.pdf",
     )
     await callback_query.message.answer_document(
@@ -140,18 +141,22 @@ async def finish_training(callback_query: CallbackQuery, state: FSMContext) -> N
         await callback_query.message.answer("Тренування не знайдено.")
         return
 
-    training_session.training_ended_at = datetime.datetime.now(tz=ZoneInfo("Europe/Kyiv"))
+    training_session.training_ended_at = datetime.datetime.now(
+        tz=ZoneInfo("Europe/Kyiv")
+    )
 
-    training_session.training_started_at = training_session.training_started_at.astimezone(
-        ZoneInfo("Europe/Kyiv")
+    training_session.training_started_at = (
+        training_session.training_started_at.astimezone(ZoneInfo("Europe/Kyiv"))
     )
 
     training_session.training_duration = int(
         round(
-            ((
-                training_session.training_ended_at
-                - training_session.training_started_at
-            ).total_seconds())
+            (
+                (
+                    training_session.training_ended_at
+                    - training_session.training_started_at
+                ).total_seconds()
+            )
             / 60,
             0,
         )
@@ -384,9 +389,7 @@ async def handle_do_you_have_soreness(
     F.data.startswith("stress_level_"),
     StateFilter(AfterTrainingState.stress_level),
 )
-async def handle_stress_level(
-    callback_query: CallbackQuery, state: FSMContext
-) -> None:
+async def handle_stress_level(callback_query: CallbackQuery, state: FSMContext) -> None:
     stress_level = int(callback_query.data.split("_")[-1])
     state_data = await state.get_data()
     training_session_id = state_data.get("training_session_id")

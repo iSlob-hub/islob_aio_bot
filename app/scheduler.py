@@ -3,9 +3,9 @@ from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.executors.asyncio import AsyncIOExecutor
-from config import settings
+from app.config import settings
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from db.models import Notification, User, MorningQuiz, TrainingSession
+from app.db.models import Notification, User, MorningQuiz, TrainingSession
 from zoneinfo import ZoneInfo
 from croniter import croniter
 
@@ -15,6 +15,7 @@ zone_info = ZoneInfo("Europe/Kyiv")
 jobstores = {
     "default": MemoryJobStore(),
 }
+
 
 class BotScheduler:
     def __init__(self, bot, db_client):
@@ -105,7 +106,6 @@ class BotScheduler:
             {"is_active": True, "notification_type": "daily_morning_notification"}
         ).to_list()
 
-
         for notification in notifications:
             notification_time = notification.notification_time
             time_now_str = datetime.now(tz=zone_info).strftime("%H:%M")
@@ -156,7 +156,6 @@ class BotScheduler:
             except Exception as e:
                 print(f"Failed to send morning quiz to {recipient}: {e}")
 
-    
     async def send_after_training_notification(self):
         """Send after training notification"""
         try:
@@ -168,7 +167,9 @@ class BotScheduler:
             ).to_list()
 
             for notification in notifications:
-                training_session_id = notification.system_data.get("training_session_id")
+                training_session_id = notification.system_data.get(
+                    "training_session_id"
+                )
                 training_session = await TrainingSession.get(training_session_id)
                 if not training_session:
                     print(f"Training session {training_session_id} not found")
@@ -198,7 +199,6 @@ class BotScheduler:
         except Exception as e:
             print(f"Failed to send after training notification: {e}")
 
-
     async def send_too_long_training_notification(self):
         now_utc = datetime.now(ZoneInfo("Europe/Kyiv"))
         cutoff = now_utc - timedelta(hours=1)
@@ -206,7 +206,7 @@ class BotScheduler:
         sessions = await TrainingSession.find(
             TrainingSession.completed == False,
             TrainingSession.training_warning_message_sent == False,
-            TrainingSession.training_started_at <= cutoff
+            TrainingSession.training_started_at <= cutoff,
         ).to_list()
 
         for session in sessions:
@@ -217,30 +217,30 @@ class BotScheduler:
                 )
                 session.training_warning_message_sent = True
                 await session.save()
-                print(f"Sent warning for training session {session.id} to {session.user_id}")
+                print(
+                    f"Sent warning for training session {session.id} to {session.user_id}"
+                )
             except Exception as e:
                 print(f"Failed to send warning for session {session.id}: {e}")
 
-
-    
     async def send_custom_notifications(self):
         """Custom notification example:
-            {
-  "_id": {
-    "$oid": "68527ece216c82303db1a627"
-  },
-  "user_id": "379872548",
-  "notification_time": "12:00",
-  "notification_text": "Понюхай",
-  "notification_type": "custom_notification",
-  "custom_notification_text": "Понюхай",
-  "custom_notification_cron": "0 12 * * 0,5,2",
-  "custom_notification_execute_once": false,
-  "is_active": true,
-  "created_at": {
-    "$date": "2025-06-18T08:54:38.790Z"
-  }
-}
+                    {
+          "_id": {
+            "$oid": "68527ece216c82303db1a627"
+          },
+          "user_id": "379872548",
+          "notification_time": "12:00",
+          "notification_text": "Понюхай",
+          "notification_type": "custom_notification",
+          "custom_notification_text": "Понюхай",
+          "custom_notification_cron": "0 12 * * 0,5,2",
+          "custom_notification_execute_once": false,
+          "is_active": true,
+          "created_at": {
+            "$date": "2025-06-18T08:54:38.790Z"
+          }
+        }
         """
         try:
             notifications = await Notification.find(
@@ -256,7 +256,10 @@ class BotScheduler:
                     notification.system_data = {}
                     await notification.save()
                 last_sent_date = notification.system_data.get("last_sent_date")
-                if last_sent_date and last_sent_date.date() == datetime.now(tz=zone_info).date():
+                if (
+                    last_sent_date
+                    and last_sent_date.date() == datetime.now(tz=zone_info).date()
+                ):
                     print(
                         f"Skipping custom notification for {notification.user_id} at {notification.notification_time}, already sent today"
                     )
@@ -273,13 +276,13 @@ class BotScheduler:
 
                 cron_expr = notification.custom_notification_cron
                 now = datetime.now(tz=zone_info)
-                
+
                 cron = croniter(cron_expr, now)
                 prev_time = cron.get_prev(datetime)
 
-                
-
-                if prev_time.replace(second=0, microsecond=0) == now.replace(second=0, microsecond=0):
+                if prev_time.replace(second=0, microsecond=0) == now.replace(
+                    second=0, microsecond=0
+                ):
                     await self.bot.send_message(
                         chat_id=notification.user_id,
                         text=notification.custom_notification_text,
@@ -301,7 +304,6 @@ class BotScheduler:
 
         except Exception as e:
             print(f"Failed to send custom notifications: {e}")
-
 
     def shutdown(self):
         """Gracefully shutdown the scheduler"""

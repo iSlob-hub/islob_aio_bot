@@ -1,7 +1,7 @@
 from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery
 from typing import Dict, Any, Callable, Awaitable
-from db.models import ConversationTransition
+from app.db.models import ConversationTransition
 import datetime
 
 

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Профіль користувача{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm mx-auto" style="max-width: 600px;">
+    <div class="card-body">
+        <h2 class="card-title">Профіль користувача</h2>
+        <p><strong>Telegram ID:</strong> {{ user.telegram_id }}</p>
+        <p><strong>Повне ім’я:</strong> {{ user.full_name }}</p>
+        <p><strong>Username:</strong> @{{ user.telegram_username }}</p>
+        <p>
+            <strong>Статус:</strong>
+            {% if user.is_verified %}✅ Верифікований {% else %}❌ Не верифікований{% endif %}
+            /
+            {% if user.is_active %}🟢 Активний{% else %}🔴 Неактивний{% endif %}
+        </p>
+        <a class="btn btn-primary" href="/training-sessions?telegram_id={{ user.telegram_id }}">Тренування</a>
+        <a class="btn btn-secondary" href="/morning-quiz?telegram_id={{ user.telegram_id }}">Ранкові опитування</a>
+
+
+        <h3>Training file</h3>
+
+        <div class="mb-4">
+        {% if user.training_file_url %}
+            <div class="alert alert-success d-flex justify-content-between align-items-center">
+            <div>
+                <strong>✅ Завантажено:</strong>
+                <a href="{{ user.training_file_url }}" target="_blank" class="ms-2">
+                {{ user.training_file_url.split('/')[-1] }}
+                </a>
+            </div>
+            <button class="btn btn-outline-dark btn-sm"
+                    onclick="navigator.clipboard.writeText(window.location.origin + '{{ user.training_file_url }}')">
+            📋 Скопіювати посилання
+            </button>
+            </div>
+        {% else %}
+            <div class="alert alert-warning">
+            🚫 Файл ще не завантажено.
+            </div>
+        {% endif %}
+
+        <form action="/upload-training-file?user_telegram_id={{ user.telegram_id }}" method="post" enctype="multipart/form-data" class="mt-3">
+            <div class="mb-3">
+            <label for="file" class="form-label">Виберіть файл для завантаження</label>
+            <input type="file" name="file" id="file" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Завантажити файл</button>
+        </form>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+

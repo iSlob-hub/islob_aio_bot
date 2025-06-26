@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Ранкові опитування - {{ user.full_name }}{% endblock %}
+
+{% block extra_head %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+  <script>Chart.register(ChartDataLabels);</script>
+  <style>
+    .chart-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        margin-top: 2rem;
+    }
+    canvas {
+        max-width: 100%;
+        height: auto;
+    }
+    .chart-container {
+        background: #fff;
+        padding: 1rem;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <h1 class="mb-4">Ранкові опитування {{ user.full_name }} (@{{ user.telegram_username }})</h1>
+
+  <div class="chart-grid">
+    <div class="chart-container">
+      <h5>1. Самопочуття</h5>
+      <canvas id="feelChart"></canvas>
+    </div>
+    <div class="chart-container">
+      <h5>2. Сон (години)</h5>
+      <canvas id="sleepChart"></canvas>
+    </div>
+    <div class="chart-container">
+      <h5>3. Вага</h5>
+      <canvas id="weightChart"></canvas>
+    </div>
+    <div class="chart-container">
+      <h5>4. Відвідування залу</h5>
+      <canvas id="gymChart"></canvas>
+    </div>
+  </div>
+
+  <table class="table table-striped table-bordered mt-5">
+    <thead class="table-light">
+      <tr>
+        <th>Дата</th>
+        <th>Самопочуття</th>
+        <th>Сон (год)</th>
+        <th>Вага</th>
+        <th>Йде в зал?</th>
+        <th>Час відвідування</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for q in quizzes %}
+      <tr>
+        <td>{{ q.created_at.replace("T", " ")[:16] }}</td>
+        <td>{{ q.how_do_you_feel_today or "—" }}</td>
+        <td>{{ q.how_many_hours_of_sleep or "—" }}</td>
+        <td>{{ q.weight or "—" }}</td>
+        <td>{{ "Так" if q.is_going_to_gym else "Ні" }}</td>
+        <td>{{ q.gym_attendance_time.replace("T", " ")[:16] if q.gym_attendance_time else "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <script>
+    const quizzes = {{ quizzes | tojson }};
+    const formatDate = d => new Date(d).toISOString().slice(0, 10);
+
+    const labels = quizzes.map(q => formatDate(q.created_at));
+    const feels = quizzes.map(q => q.how_do_you_feel_today ?? null);
+    const sleeps = quizzes.map(q => q.how_many_hours_of_sleep ?? null);
+    const weights = quizzes.map(q => q.weight ?? null);
+
+    const gymYes = quizzes.filter(q => q.is_going_to_gym).length;
+    const gymNo = quizzes.length - gymYes;
+
+    new Chart(document.getElementById('feelChart'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Самопочуття (1–10)',
+          data: feels,
+          borderColor: 'green',
+          fill: false,
+          tension: 0.2
+        }]
+      }
+    });
+
+    new Chart(document.getElementById('sleepChart'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Сон (год)',
+          data: sleeps,
+          borderColor: 'blue',
+          fill: false,
+          tension: 0.2
+        }]
+      }
+    });
+
+    new Chart(document.getElementById('weightChart'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Вага (кг)',
+          data: weights,
+          borderColor: 'purple',
+          fill: false,
+          tension: 0.2
+        }]
+      }
+    });
+
+    new Chart(document.getElementById('gymChart'), {
+      type: 'pie',
+      data: {
+        labels: ['Йде в зал', 'Не йде в зал'],
+        datasets: [{
+          data: [gymYes, gymNo],
+          backgroundColor: ['#28a745', '#dc3545']
+        }]
+      },
+      options: {
+        plugins: {
+          datalabels: {
+            formatter: (value, context) => {
+              const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+              return (value / total * 100).toFixed(1) + '%';
+            },
+            color: '#fff',
+            font: { weight: 'bold' }
+          },
+          legend: { position: 'bottom' }
+        }
+      }
+    });
+  </script>
+{% endblock %}

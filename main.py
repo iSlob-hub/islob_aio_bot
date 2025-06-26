@@ -1,9 +1,9 @@
 import asyncio
 from datetime import datetime
 
-from db.models import User
-from db.database import init_db
-from routers import (
+from app.db.models import User
+from app.db.database import init_db
+from app.routers import (
     main_router,
     report_problem_router,
     notifications_router,
@@ -12,10 +12,10 @@ from routers import (
 )
 from aiogram.fsm.storage.mongo import MongoStorage
 from aiogram import Bot, Dispatcher
-from config import settings
-from utils.conversation_tracker_middleware import ConversationTrackerMiddleware
+from app.config import settings
+from app.utils.conversation_tracker_middleware import ConversationTrackerMiddleware
 from aiogram.client.default import DefaultBotProperties
-from scheduler import BotScheduler
+from app.scheduler import BotScheduler
 import logging
 import signal
 import sys

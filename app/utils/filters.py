@@ -1,7 +1,7 @@
 from aiogram.filters import Filter
 from aiogram.types import Message, CallbackQuery
 from typing import Union
-from db.models import User
+from app.db.models import User
 
 
 class VerifiedUserFilter(Filter):

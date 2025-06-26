@@ -2,10 +2,10 @@ from aiogram.filters import StateFilter
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram import Router
-import text_constants as tc
+import app.text_constants as tc
 
-from routers.main_router import MainMenuState
-from keyboards import get_main_menu_keyboard
+from app.routers.main_router import MainMenuState
+from app.keyboards import get_main_menu_keyboard
 
 
 report_problem_router = Router()

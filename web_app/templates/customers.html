@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Користувачі{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Користувачі</h1>
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+    {% for user in users %}
+    <div class="col">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">{{ user.full_name }}</h5>
+                <p class="card-text">
+                    <strong><a href="https://t.me/{{ user.telegram_username }}" target="_blank">@{{ user.telegram_username }}</a></strong><br>
+                    <span class="text-muted small">Telegram ID: {{ user.telegram_id }}</span><br>
+                    {% if user.is_verified %}
+                        <span class="badge bg-success">Верифікований</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Не верифікований</span>
+                    {% endif %}
+                    {% if user.is_active %}
+                        <span class="badge bg-primary">Активний</span>
+                    {% else %}
+                        <span class="badge bg-danger">Неактивний</span>
+                    {% endif %}
+                </p>
+                <a href="/profile?telegram_id={{ user.telegram_id }}" class="btn btn-outline-primary btn-sm">Переглянути профіль</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

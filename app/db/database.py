@@ -2,8 +2,8 @@ from typing import List, Type
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from config import settings
-from db.models import (
+from app.config import settings
+from app.db.models import (
     User,
     ConversationTransition,
     Notification,

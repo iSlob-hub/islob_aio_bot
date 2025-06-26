@@ -10,9 +10,9 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 
 from typing import Optional
-from states import MorningQuizStates
-from routers.main_router import MainMenuState
-from db.models import MorningQuiz
+from app.states import MorningQuizStates
+from app.routers.main_router import MainMenuState
+from app.db.models import MorningQuiz
 import datetime
 
 
@@ -189,8 +189,10 @@ async def handle_is_going_to_gym(callback: CallbackQuery, state: FSMContext):
     morning_quiz.is_going_to_gym = True if is_going_to_gym == "yes" else False
     if is_going_to_gym:
         await callback.answer("✅ Супєр, йдем в зальчік!")
+        morning_quiz.is_going_to_gym = True
     else:
         await callback.answer("✅ Поняв, прийняв, в зал не йдемо.")
+        morning_quiz.is_going_to_gym = False
     await morning_quiz.save()
 
     if is_going_to_gym:
@@ -209,7 +211,7 @@ async def handle_is_going_to_gym(callback: CallbackQuery, state: FSMContext):
             "Тепер вкажи свою вагу (в кг):",
         )
         await state.set_state(MorningQuizStates.waiting_for_weight)
-
+    m=
 
 @morning_quiz_router.message(
     StateFilter(MorningQuizStates.waiting_for_gym_attendance_time)

@@ -2,7 +2,7 @@ from aiogram.filters import StateFilter
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram import Router, F
-import text_constants as tc
+import app.text_constants as tc
 from aiogram.types import ReplyKeyboardRemove
 from aiogram.types import (
     InlineKeyboardMarkup,
@@ -10,11 +10,11 @@ from aiogram.types import (
     CallbackQuery,
 )
 import re
-from routers.main_router import MainMenuState
-from states import NotificationsState
-import keyboards as kb
-from db.models import Notification, NotificationType
-from utils.bot_utils import cron_to_human_readable
+from app.routers.main_router import MainMenuState
+from app.states import NotificationsState
+import app.keyboards as kb
+from app.db.models import Notification, NotificationType
+from app.utils.bot_utils import cron_to_human_readable
 
 notifications_router = Router()
 

@@ -13,6 +13,8 @@ class User(Document):
     is_verified: bool = False
     created_at: datetime = Field(default_factory=datetime.now)
 
+    training_file_url: Optional[str] = None
+
     class Settings:
         name = "users"
 

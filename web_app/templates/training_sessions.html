@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}Тренування - {{ user.full_name }}{% endblock %}
+
+{% block extra_head %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+  <script>Chart.register(ChartDataLabels);</script>
+  <style>
+    form { margin-bottom: 1rem; }
+    .chart-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        margin-top: 2rem;
+    }
+    canvas {
+        max-width: 100%;
+        height: auto;
+    }
+    .chart-container {
+        background: #fff;
+        padding: 1rem;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+  {% else %}
+    <h1 class="mb-4">Тренувальні сесії {{ user.full_name }} (@{{ user.telegram_username }})</h1>
+
+    <form method="get" class="mb-3">
+        <input type="hidden" name="telegram_id" value="{{ user.telegram_id }}">
+        <label class="me-2">З: <input type="date" name="date_from" value="{{ date_from }}"></label>
+        <label class="me-2">По: <input type="date" name="date_to" value="{{ date_to }}"></label>
+        <button type="submit" class="btn btn-primary btn-sm">Фільтрувати</button>
+    </form>
+
+    <div class="chart-grid">
+        <div class="chart-container">
+            <h5>1. Тривалість тренування</h5>
+            <canvas id="durationChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <h5>2. Складність тренування</h5>
+            <canvas id="intensityChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <h5>3. Розподіл болі</h5>
+            <canvas id="painPieChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <h5>4. Крепатура</h5>
+            <canvas id="sorenessPieChart"></canvas>
+        </div>
+    </div>
+
+    <table class="table table-striped table-bordered mt-5">
+        <thead class="table-light">
+            <tr>
+                <th>Початок</th>
+                <th>Кінець</th>
+                <th>Тривалість (хв)</th>
+                <th>Важкість</th>
+                <th>Болі</th>
+                <th>Крепатура</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for session in sessions %}
+            <tr>
+                <td>{{ session.training_started_at.replace("T", " ")[:16] if session.training_started_at else "—" }}</td>
+                <td>{{ session.training_ended_at.replace("T", " ")[:16] if session.training_ended_at else "—" }}</td>
+                <td>{{ session.training_duration or "—" }}</td>
+                <td>{{ session.how_hard_was_training or "—" }}</td>
+                <td>{{ "Так" if session.do_you_have_any_pain else "Ні" }}</td>
+                <td>{{ "Так" if session.do_you_have_soreness else "Ні" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <script>
+        const sessions = {{ sessions | tojson }};
+        const formatDate = d => new Date(d).toISOString().slice(0, 10);
+
+        const labels = sessions.map(s => formatDate(s.training_started_at));
+        const durations = sessions.map(s => s.training_duration || 0);
+        const intensities = sessions.map(s => s.how_hard_was_training || 0);
+
+        const painYes = sessions.filter(s => s.do_you_have_any_pain).length;
+        const painNo = sessions.length - painYes;
+
+        const sorenessYes = sessions.filter(s => s.do_you_have_soreness).length;
+        const sorenessNo = sessions.length - sorenessYes;
+
+        new Chart(document.getElementById('durationChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Тривалість (хв)',
+                    data: durations,
+                    borderColor: 'blue',
+                    fill: false,
+                    tension: 0.2
+                }]
+            }
+        });
+
+        new Chart(document.getElementById('intensityChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Наскільки важким було тренування (1–10)',
+                    data: intensities,
+                    borderColor: 'orange',
+                    fill: false,
+                    tension: 0.2
+                }]
+            }
+        });
+
+        new Chart(document.getElementById('painPieChart'), {
+            type: 'pie',
+            data: {
+                labels: ['Були болі', 'Не було болей'],
+                datasets: [{
+                    data: [painYes, painNo],
+                    backgroundColor: ['red', 'green']
+                }]
+            },
+            options: {
+                plugins: {
+                    datalabels: {
+                        formatter: (value, context) => {
+                            const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                            const percentage = (value / total * 100).toFixed(1) + '%';
+                            return percentage;
+                        },
+                        color: '#fff',
+                        font: { weight: 'bold' }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw || 0;
+                                return `${label}: ${value}`;
+                            }
+                        }
+                    },
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('sorenessPieChart'), {
+            type: 'pie',
+            data: {
+                labels: ['Була крепатура', 'Не було крепатури'],
+                datasets: [{
+                    data: [sorenessYes, sorenessNo],
+                    backgroundColor: ['purple', 'lightgray']
+                }]
+            },
+            options: {
+                plugins: {
+                    datalabels: {
+                        formatter: (value, context) => {
+                            const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                            const percentage = (value / total * 100).toFixed(1) + '%';
+                            return percentage;
+                        },
+                        color: '#fff',
+                        font: { weight: 'bold' }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw || 0;
+                                return `${label}: ${value}`;
+                            }
+                        }
+                    },
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    </script>
+  {% endif %}
+{% endblock %}

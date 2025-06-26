@@ -4,7 +4,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
-import text_constants as tc
+import app.text_constants as tc
 
 
 async def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
