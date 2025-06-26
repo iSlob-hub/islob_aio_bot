@@ -39,7 +39,7 @@ def index(request: Request):
             "request": request, 
             "bot": TG_BOT_USERNAME, 
             "current_user": None,
-            "auth_url": f"{os.environ.get("BASE_HOST")}/auth/telegram"
+            "auth_url": f"{os.environ.get('BASE_HOST')}/auth/telegram"
         }
     )
 
