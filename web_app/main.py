@@ -34,7 +34,14 @@ async def startup_event():
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "bot": TG_BOT_USERNAME, "current_user": None})
+    return templates.TemplateResponse(
+        "index.html", {
+            "request": request, 
+            "bot": TG_BOT_USERNAME, 
+            "current_user": None,
+            "auth_url": f"{os.environ.get("BASE_HOST")}/auth/telegram"
+        }
+    )
 
 
 @app.get("/auth/telegram")
