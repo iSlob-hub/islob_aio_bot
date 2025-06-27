@@ -101,7 +101,7 @@ async def handle_how_do_you_feel_before(
     # Send test PDF file to user
 
     training_pdf = URLInputFile(
-        url=f"https://grumpy-pens-notice.loca.lt{user.training_file_url}",
+        url=f"{os.environ.get("BASE_HOST")}{user.training_file_url}",
         filename="training_session.pdf",
     )
     await callback_query.message.answer_document(
