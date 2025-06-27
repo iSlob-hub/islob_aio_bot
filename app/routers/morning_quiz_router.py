@@ -211,7 +211,7 @@ async def handle_is_going_to_gym(callback: CallbackQuery, state: FSMContext):
             "Тепер вкажи свою вагу (в кг):",
         )
         await state.set_state(MorningQuizStates.waiting_for_weight)
-    m=
+
 
 @morning_quiz_router.message(
     StateFilter(MorningQuizStates.waiting_for_gym_attendance_time)
