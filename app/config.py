@@ -20,7 +20,8 @@ class Settings(BaseSettings):
 
     ENVIRONMENT: Optional[str] = None
 
-    BASE_HOST: Optional[str]
+    BASE_HOST: Optional[str] = None
+    TG_BOT_USERNAME: Optional[str] = None
 
     # Database name
     MONGODB_DB_NAME: str = "my_app_db"

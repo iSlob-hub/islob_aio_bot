@@ -18,7 +18,7 @@ load_dotenv()
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-TG_BOT_USERNAME = "yuk0_dev_team_bot"
+TG_BOT_USERNAME = os.environ.get("TG_BOT_USERNAME")
 
 app = FastAPI()
 
