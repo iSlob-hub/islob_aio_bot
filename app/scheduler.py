@@ -12,6 +12,7 @@ import logging
 
 logging.basicConfig(level=logging.DEBUG)
 
+logger = logging.getLogger(__name__)
 
 zone_info = ZoneInfo("Europe/Kyiv")
 
@@ -110,32 +111,39 @@ class BotScheduler:
         ).to_list()
 
         for notification in notifications:
+
+            logger.debug(f"Processing notification for {notification.user_id}")
             notification_time = notification.notification_time
             time_now_str = datetime.now(tz=zone_info).strftime("%H:%M")
             if not notification.system_data:
                 notification.system_data = {}
             await notification.save()
             notification_last_sent_date = notification.system_data.get("last_sent_date")
+            logger.debug(
+                f"Processing notification for {notification.user_id} at {notification_time}, last sent date: {notification_last_sent_date}"
+            )
             if notification_last_sent_date:
                 notification_last_sent_date = notification_last_sent_date.date()
                 if notification_last_sent_date == datetime.now(tz=zone_info).date():
-                    print(
+                    logger.debug(
                         f"Skipping notification for {notification.user_id} at {notification_time}, already sent today"
                     )
                     continue
             if notification_time != time_now_str:
-                print(
+                logger.debug(
                     f"Skipping notification for {notification.user_id} at {notification_time}, current time is {time_now_str}"
                 )
                 continue
+            logger.debug(f"Sending morning notification to {notification.user_id}")
             recipient = notification.user_id
 
             morning_quiz = MorningQuiz(
                 user_id=str(recipient),
             )
+            logger.debug(f"Creating morning quiz for user {recipient}")
             await morning_quiz.save()
             morning_quiz_id = morning_quiz.id
-
+            logger.debug(f"Morning quiz created with ID {morning_quiz_id} for user {recipient}")
             try:
                 await self.bot.send_message(
                     chat_id=recipient,
@@ -151,13 +159,13 @@ class BotScheduler:
                         ]
                     ),
                 )
-                print(f"✅ Sent morning quiz to {recipient}")
+                logger.debug(f"✅ Sent morning quiz to {recipient}")
                 notification.system_data = {
                     "last_sent_date": datetime.now(tz=zone_info).date(),
                 }
                 await notification.save()
             except Exception as e:
-                print(f"Failed to send morning quiz to {recipient}: {e}")
+                logger.debug(f"Failed to send morning quiz to {recipient}: {e}")
 
     async def send_after_training_notification(self):
         """Send after training notification"""
