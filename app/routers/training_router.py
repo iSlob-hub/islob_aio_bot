@@ -98,12 +98,12 @@ async def handle_how_do_you_feel_before(
     await training_session.save()
     training_session_id = training_session.id
 
-    # Send test PDF file to user
 
     training_pdf = URLInputFile(
         url=f"{os.environ.get('BASE_HOST')}{user.training_file_url}",
         filename="training_session.pdf",
     )
+    
     await callback_query.message.answer_document(
         document=training_pdf, caption="Ось твій тренувальний план на сьогодні."
     )
