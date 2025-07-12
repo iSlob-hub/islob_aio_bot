@@ -77,6 +77,7 @@ async def auth_telegram(
         "hash": hash
     }
     
+
     user = await User.find_one(User.telegram_id == str(id))
     if not user:
         return templates.TemplateResponse("not_registered.html", {
