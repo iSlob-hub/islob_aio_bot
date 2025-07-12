@@ -129,9 +129,13 @@ class BotScheduler:
                         f"Skipping notification for {notification.user_id} at {notification_time}, already sent today"
                     )
                     continue
-            if notification_time != time_now_str:
+            try:
+                notification_time_padded = datetime.strptime(notification_time, "%H:%M").strftime("%H:%M")
+            except ValueError:
+                notification_time_padded = datetime.strptime(notification_time, "%-H:%M").strftime("%H:%M")
+            if notification_time_padded != time_now_str:
                 logger.debug(
-                    f"Skipping notification for {notification.user_id} at {notification_time}, current time is {time_now_str}"
+                    f"Skipping notification for {notification.user_id} at {notification_time_padded}, current time is {time_now_str}"
                 )
                 continue
             logger.debug(f"Sending morning notification to {notification.user_id}")
