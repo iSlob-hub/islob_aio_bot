@@ -76,10 +76,7 @@ async def auth_telegram(
         "auth_date": auth_date,
         "hash": hash
     }
-
-    # if not verify_telegram_auth(user_data):
-    #     return HTMLResponse("Invalid Telegram login", status_code=400)
-
+    
     user = await User.find_one(User.telegram_id == str(id))
     if not user:
         return templates.TemplateResponse("not_registered.html", {

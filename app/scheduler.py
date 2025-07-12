@@ -8,6 +8,9 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from app.db.models import Notification, User, MorningQuiz, TrainingSession
 from zoneinfo import ZoneInfo
 from croniter import croniter
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
 
 
 zone_info = ZoneInfo("Europe/Kyiv")
