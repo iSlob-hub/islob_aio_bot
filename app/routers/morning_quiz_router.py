@@ -14,6 +14,7 @@ from app.states import MorningQuizStates
 from app.routers.main_router import MainMenuState
 from app.db.models import MorningQuiz, Notification, NotificationType
 import datetime
+from app.keyboards import get_main_menu_keyboard
 
 
 async def create_gym_reminder_notification(user_id: str, gym_time: datetime.datetime):
@@ -317,9 +318,9 @@ async def handle_weight(message: Message, state: FSMContext):
     response_text += f"Твоя вага: <b>{weight} кг</b>.\n\n"
     response_text += "Ти красава! Гарного дня!"
     await message.answer(
-        response_text, parse_mode="HTML", reply_markup=ReplyKeyboardRemove()
+        response_text, parse_mode="HTML", reply_markup=await get_main_menu_keyboard()
     )
-
+    
     morning_quiz.completed = True
     await morning_quiz.save()
 

@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# System deps (tzdata for zoneinfo)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tzdata \
+    build-essential \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install Python deps from the root requirements.txt
+COPY requirements.txt ./
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
+
+# Copy only required source code
+COPY app ./app
+COPY web_app ./web_app
+# Ensure upload dir exists for StaticFiles mount
+RUN mkdir -p internal_files
+
+# Expose default port (Render will inject PORT env var)
+EXPOSE 8000
+
+# Start FastAPI using PORT provided by Render (fallback to 8000 locally)
+CMD ["sh", "-c", "uvicorn web_app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
