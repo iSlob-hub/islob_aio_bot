@@ -33,6 +33,7 @@ class NotificationType(str, Enum):
     DAILY_MORNING_NOTIFICATION = "daily_morning_notification"
     AFTER_TRAINING_NOTIFICATION = "after_training_notification"
     CUSTOM_NOTIFICATION = "custom_notification"
+    GYM_REMINDER_NOTIFICATION = "gym_reminder_notification"
 
 
 class Notification(Document):
@@ -89,3 +90,35 @@ class TrainingSession(Document):
 
     class Settings:
         name = "training_sessions"
+
+
+class PeriodType(str, Enum):
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+
+
+class UserStatistics(Document):
+    user_id: Indexed(str)
+    period_type: PeriodType
+    period_start: datetime
+    period_end: datetime
+    
+    # JSON fields for each chart type
+    stress_data: Optional[dict] = None
+    warehouse_data: Optional[dict] = None
+    sleep_data: Optional[dict] = None
+    wellbeing_data: Optional[dict] = None
+    weight_data: Optional[dict] = None
+    
+    # Metadata
+    total_training_sessions: int = 0
+    total_morning_quizzes: int = 0
+    is_complete: bool = False
+    generated_at: datetime = Field(default_factory=datetime.now)
+    
+    # AI Analysis
+    ai_analysis: Optional[str] = None
+    ai_analysis_generated_at: Optional[datetime] = None
+
+    class Settings:
+        name = "user_statistics"

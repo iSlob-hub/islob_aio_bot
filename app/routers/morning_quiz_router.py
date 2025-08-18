@@ -12,8 +12,40 @@ from aiogram.fsm.context import FSMContext
 from typing import Optional
 from app.states import MorningQuizStates
 from app.routers.main_router import MainMenuState
-from app.db.models import MorningQuiz
+from app.db.models import MorningQuiz, Notification, NotificationType
 import datetime
+
+
+async def create_gym_reminder_notification(user_id: str, gym_time: datetime.datetime):
+    """Створює нагадування про тренування в запланований час"""
+    try:
+        # Видаляємо старі нагадування про тренування для цього користувача
+        await Notification.find({
+            "user_id": user_id,
+            "notification_type": "gym_reminder_notification"
+        }).delete()
+        
+        # Час нагадування - саме в час тренування
+        reminder_time = gym_time
+        
+        # Створюємо нове сповіщення
+        notification = Notification(
+            user_id=user_id,
+            notification_time=reminder_time.strftime("%H:%M"),
+            notification_text=f"Час тренування: {gym_time.strftime('%H:%M')}",
+            notification_type="gym_reminder_notification",
+            is_active=True,
+            system_data={
+                "gym_time": gym_time.strftime("%H:%M"),
+                "created_date": datetime.datetime.now().date().isoformat()
+            }
+        )
+        await notification.save()
+        
+        print(f"✅ Created gym reminder for user {user_id} at {reminder_time.strftime('%H:%M')}")
+        
+    except Exception as e:
+        print(f"❌ Failed to create gym reminder notification: {e}")
 
 
 morning_quiz_router = Router()
@@ -290,6 +322,13 @@ async def handle_weight(message: Message, state: FSMContext):
 
     morning_quiz.completed = True
     await morning_quiz.save()
+
+    # Створюємо нагадування про тренування, якщо користувач планує йти в зал
+    if morning_quiz.is_going_to_gym and morning_quiz.gym_attendance_time:
+        await create_gym_reminder_notification(
+            user_id=str(message.from_user.id),
+            gym_time=morning_quiz.gym_attendance_time
+        )
 
     await state.clear()
     await state.set_state(MainMenuState.main_menu)

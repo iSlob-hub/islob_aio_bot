@@ -1,0 +1,745 @@
+{% extends "base.html" %}
+
+{% block title %}Статистика користувача{% endblock %}
+
+{% block extra_css %}
+<style>
+.ai-analysis-content {
+    line-height: 1.6;
+    font-size: 14px;
+}
+
+.ai-analysis-content h6 {
+    border-bottom: 1px solid #e3f2fd;
+    padding-bottom: 5px;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.ai-analysis-content p {
+    margin-bottom: 10px;
+}
+
+.ai-analysis-content strong {
+    font-weight: 600;
+    color: #212529;
+}
+
+.ai-analysis-content em {
+    font-style: italic;
+    color: #6c757d;
+}
+
+.ai-analysis-content li {
+    margin-left: 20px;
+    list-style-type: disc;
+    margin-bottom: 5px;
+}
+
+.ai-analysis-content ul {
+    margin: 0;
+    padding: 0;
+}
+
+#aiAnalysisCard {
+    border-left: 4px solid #28a745;
+}
+
+#aiAnalysisCard .card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <h2>Статистика користувача: {{ user.full_name }} ({{ user.telegram_id }})</h2>
+            
+            <!-- Форма для вибору періоду -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>Налаштування</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="periodType" class="form-label">Тип періоду:</label>
+                            <select class="form-select" id="periodType" onchange="loadStatistics()">
+                                <option value="weekly" {% if period_type == 'weekly' %}selected{% endif %}>Тижнева</option>
+                                <option value="monthly" {% if period_type == 'monthly' %}selected{% endif %}>Місячна (4 тижні)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">&nbsp;</label><br>
+                            <button class="btn btn-primary" onclick="generateStatistics()">
+                                <i class="fas fa-chart-line"></i> Згенерувати заново
+                            </button>
+                            <button class="btn btn-info" onclick="loadStatistics()">
+                                <i class="fas fa-sync-alt"></i> Оновити
+                            </button>
+                            <button class="btn btn-success" onclick="generateAiAnalysisDirectly()">
+                                <i class="fas fa-robot"></i> AI Аналіз
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Аналіз -->
+            <div class="card mb-4" id="aiAnalysisCard" style="display: none;">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-robot text-success"></i> AI Аналіз статистики
+                    </h5>
+                    <small class="text-muted" id="aiAnalysisDate"></small>
+                </div>
+                <div class="card-body">
+                    <!-- Спінер для AI аналізу -->
+                    <div id="aiAnalysisSpinner" class="text-center" style="display: none;">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="visually-hidden">Генерація AI аналізу...</span>
+                        </div>
+                        <p class="mt-2">Генерую AI аналіз... Це може зайняти до 30 секунд.</p>
+                    </div>
+                    
+                    <div id="aiAnalysisContent" class="ai-analysis-content">
+                        <p class="text-muted">Завантаження інформації про AI аналіз...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Завантажувач -->
+            <div id="loadingSpinner" class="text-center" style="display: none;">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Завантаження...</span>
+                </div>
+                <p>Завантаження статистики...</p>
+            </div>
+
+            <!-- Контейнер для статистики -->
+            <div id="statisticsContainer" style="display: none;">
+                <!-- Загальна інформація -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">Тренування</h5>
+                                <h3 class="text-primary" id="totalTrainings">-</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">Ранкові квізи</h5>
+                                <h3 class="text-success" id="totalQuizzes">-</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">Період</h5>
+                                <small id="periodRange">-</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">Згенеровано</h5>
+                                <small id="generatedAt">-</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Графіки -->
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-chart-line"></i> Самопочуття</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="wellbeingChart" width="400" height="200"></canvas>
+                                <div id="wellbeingStats" class="mt-2"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-chart-bar"></i> Сон</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="sleepChart" width="400" height="200"></canvas>
+                                <div id="sleepStats" class="mt-2"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-dumbbell"></i> Складність тренувань</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="difficultyChart" width="400" height="200"></canvas>
+                                <div id="difficultyStats" class="mt-2"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-brain"></i> Стрес</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="stressChart" width="400" height="200"></canvas>
+                                <div id="stressStats" class="mt-2"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-12 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-weight"></i> Вага</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="weightChart" width="800" height="200"></canvas>
+                                <div id="weightStats" class="mt-2"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Повідомлення про помилку -->
+            <div id="errorMessage" class="alert alert-danger" style="display: none;"></div>
+
+            <!-- Повідомлення про відсутність даних -->
+            <div id="noDataMessage" class="alert alert-info" style="display: none;">
+                <h4>Немає даних для відображення</h4>
+                <p>Спробуйте згенерувати статистику або перевірте, чи має користувач дані за обраний період.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let currentUserId = '{{ user.telegram_id }}';
+let charts = {};
+
+// Завантаження статистики при завантаженні сторінки
+document.addEventListener('DOMContentLoaded', function() {
+    loadStatistics();
+});
+
+function showLoading() {
+    document.getElementById('loadingSpinner').style.display = 'block';
+    document.getElementById('statisticsContainer').style.display = 'none';
+    document.getElementById('errorMessage').style.display = 'none';
+    document.getElementById('noDataMessage').style.display = 'none';
+    document.getElementById('aiAnalysisCard').style.display = 'none';
+}
+
+function hideLoading() {
+    document.getElementById('loadingSpinner').style.display = 'none';
+}
+
+function showError(message) {
+    hideLoading();
+    document.getElementById('errorMessage').textContent = message;
+    document.getElementById('errorMessage').style.display = 'block';
+    document.getElementById('statisticsContainer').style.display = 'none';
+    document.getElementById('noDataMessage').style.display = 'none';
+}
+
+function showNoData() {
+    hideLoading();
+    document.getElementById('noDataMessage').style.display = 'block';
+    document.getElementById('statisticsContainer').style.display = 'none';
+    document.getElementById('errorMessage').style.display = 'none';
+}
+
+function showStatistics() {
+    hideLoading();
+    document.getElementById('statisticsContainer').style.display = 'block';
+    document.getElementById('errorMessage').style.display = 'none';
+    document.getElementById('noDataMessage').style.display = 'none';
+}
+
+async function loadStatistics() {
+    showLoading();
+    
+    const periodType = document.getElementById('periodType').value;
+    
+    try {
+        const response = await fetch(`/api/statistics/user/${currentUserId}?period_type=${periodType}`);
+        
+        if (!response.ok) {
+            if (response.status === 404) {
+                showNoData();
+                return;
+            }
+            throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+        
+        const data = await response.json();
+        displayStatistics(data);
+        
+    } catch (error) {
+        console.error('Помилка завантаження статистики:', error);
+        showError('Помилка завантаження статистики: ' + error.message);
+    }
+}
+
+async function generateStatistics() {
+    showLoading();
+    
+    const periodType = document.getElementById('periodType').value;
+    
+    try {
+        const response = await fetch(`/api/statistics/generate/${currentUserId}?period_type=${periodType}`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+        
+        const data = await response.json();
+        displayStatistics(data);
+        
+    } catch (error) {
+        console.error('Помилка генерації статистики:', error);
+        showError('Помилка генерації статистики: ' + error.message);
+    }
+}
+
+function displayStatistics(data) {
+    // Відображення загальної інформації
+    document.getElementById('totalTrainings').textContent = data.total_training_sessions;
+    document.getElementById('totalQuizzes').textContent = data.total_morning_quizzes;
+    
+    const periodStart = new Date(data.period_start).toLocaleDateString('uk-UA');
+    const periodEnd = new Date(data.period_end).toLocaleDateString('uk-UA');
+    document.getElementById('periodRange').textContent = `${periodStart} - ${periodEnd}`;
+    
+    const generatedAt = new Date(data.generated_at).toLocaleString('uk-UA');
+    document.getElementById('generatedAt').textContent = generatedAt;
+    
+    // Відображення графіків
+    if (data.wellbeing_data) {
+        createLineChart('wellbeingChart', data.wellbeing_data, 'Самопочуття', 'rgba(75, 192, 192, 0.6)');
+        displayStats('wellbeingStats', data.wellbeing_data);
+    }
+    
+    if (data.sleep_data) {
+        createBarChart('sleepChart', data.sleep_data, 'Години сну', 'rgba(54, 162, 235, 0.6)');
+        displaySleepStats('sleepStats', data.sleep_data);
+    }
+    
+    if (data.warehouse_data) {
+        createScatterChart('difficultyChart', data.warehouse_data, 'Складність', 'rgba(255, 99, 132, 0.6)');
+        displayStats('difficultyStats', data.warehouse_data);
+    }
+    
+    if (data.stress_data) {
+        createScatterChart('stressChart', data.stress_data, 'Стрес', 'rgba(255, 159, 64, 0.6)');
+        displayStats('stressStats', data.stress_data);
+    }
+    
+    if (data.weight_data) {
+        createAreaChart('weightChart', data.weight_data, 'Вага (кг)', 'rgba(153, 102, 255, 0.6)');
+        displayWeightStats('weightStats', data.weight_data);
+    }
+    
+    showStatistics();
+}
+
+function createLineChart(canvasId, data, label, color) {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    
+    if (charts[canvasId]) {
+        charts[canvasId].destroy();
+    }
+    
+    charts[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.data_points.map(p => p.date),
+            datasets: [{
+                label: label,
+                data: data.data_points.map(p => p.value),
+                borderColor: color,
+                backgroundColor: color.replace('0.6', '0.2'),
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 0,
+                        maxTicksLimit: 10
+                    }
+                },
+                y: {
+                    min: data.y_axis_range[0],
+                    max: data.y_axis_range[1],
+                    ticks: {
+                        callback: function(value) {
+                            return Number(value).toFixed(1);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function createBarChart(canvasId, data, label, color) {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    
+    if (charts[canvasId]) {
+        charts[canvasId].destroy();
+    }
+    
+    charts[canvasId] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.data_points.map(p => p.date),
+            datasets: [{
+                label: label,
+                data: data.data_points.map(p => p.value),
+                backgroundColor: color,
+                borderColor: color.replace('0.6', '1'),
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 0,
+                        maxTicksLimit: 10
+                    }
+                },
+                y: {
+                    min: data.y_axis_range[0],
+                    max: data.y_axis_range[1],
+                    ticks: {
+                        callback: function(value) {
+                            return Number(value).toFixed(1);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function createScatterChart(canvasId, data, label, color) {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    
+    if (charts[canvasId]) {
+        charts[canvasId].destroy();
+    }
+    
+    charts[canvasId] = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: label,
+                data: data.data_points.map(p => ({x: p.date, y: p.value})),
+                backgroundColor: color,
+                borderColor: color.replace('0.6', '1'),
+                pointRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                }
+            },
+            scales: {
+                x: {
+                    type: 'category',
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 0,
+                        maxTicksLimit: 10
+                    }
+                },
+                y: {
+                    min: data.y_axis_range[0],
+                    max: data.y_axis_range[1],
+                    ticks: {
+                        callback: function(value) {
+                            return Number(value).toFixed(1);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function createAreaChart(canvasId, data, label, color) {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    
+    if (charts[canvasId]) {
+        charts[canvasId].destroy();
+    }
+    
+    charts[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.data_points.map(p => p.date),
+            datasets: [{
+                label: label,
+                data: data.data_points.map(p => p.value),
+                borderColor: color,
+                backgroundColor: color.replace('0.6', '0.3'),
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 0,
+                        maxTicksLimit: 10
+                    }
+                },
+                y: {
+                    min: data.y_axis_range[0],
+                    max: data.y_axis_range[1],
+                    ticks: {
+                        callback: function(value) {
+                            return Number(value).toFixed(1);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function displayStats(elementId, data) {
+    const element = document.getElementById(elementId);
+    let html = `<small class="text-muted">Середнє: ${data.average}</small>`;
+    
+    if (data.trend) {
+        const trendText = {
+            'stable': 'Стабільний',
+            'increasing': 'Зростає',
+            'decreasing': 'Знижується',
+            'fluctuating': 'Коливається'
+        };
+        html += ` | <small class="text-muted">Тренд: ${trendText[data.trend] || data.trend}</small>`;
+    }
+    
+    element.innerHTML = html;
+}
+
+function displaySleepStats(elementId, data) {
+    const element = document.getElementById(elementId);
+    let html = `<small class="text-muted">Середнє: ${data.average} год</small>`;
+    
+    if (data.total_sleep_hours) {
+        html += ` | <small class="text-muted">Загалом: ${data.total_sleep_hours} год</small>`;
+    }
+    
+    element.innerHTML = html;
+}
+
+function displayWeightStats(elementId, data) {
+    const element = document.getElementById(elementId);
+    let html = '';
+    
+    if (data.start_weight) {
+        html += `<small class="text-muted">Початкова: ${data.start_weight} кг</small>`;
+    }
+    
+    if (data.end_weight) {
+        html += ` | <small class="text-muted">Кінцева: ${data.end_weight} кг</small>`;
+    }
+    
+    if (data.weight_change !== undefined) {
+        const changeClass = data.weight_change > 0 ? 'text-success' : data.weight_change < 0 ? 'text-danger' : 'text-muted';
+        const changeSign = data.weight_change > 0 ? '+' : '';
+        html += ` | <small class="${changeClass}">Зміна: ${changeSign}${data.weight_change} кг</small>`;
+    }
+    
+    if (data.trend) {
+        const trendText = {
+            'stable': 'Стабільна',
+            'increasing': 'Зростає',
+            'decreasing': 'Знижується'
+        };
+        html += ` | <small class="text-muted">Тренд: ${trendText[data.trend] || data.trend}</small>`;
+    }
+    
+    document.getElementById(elementId).innerHTML = html;
+}
+
+// AI Аналіз функції
+async function generateAiAnalysisDirectly() {
+    try {
+        // Отримуємо конфігурацію AI
+        const configResponse = await fetch('/api/statistics/ai-config', {
+            credentials: 'include'
+        });
+        
+        if (!configResponse.ok) {
+            throw new Error('Не вдалося отримати конфігурацію AI');
+        }
+        
+        const config = await configResponse.json();
+        
+        if (!config.has_api_key || !config.has_assistant_id) {
+            alert('AI аналіз не налаштований. API ключ або ID асистента відсутні в конфігурації сервера.');
+            return;
+        }
+        
+        const periodType = document.getElementById('periodType').value;
+        const userId = currentUserId;
+        
+        // Показуємо картку з спінером
+        document.getElementById('aiAnalysisCard').style.display = 'block';
+        document.getElementById('aiAnalysisSpinner').style.display = 'block';
+        document.getElementById('aiAnalysisContent').style.display = 'none';
+        
+        // Відправляємо запит
+        const response = await fetch(`/api/statistics/generate-with-ai/${userId}?period_type=${periodType}&openai_api_key=${encodeURIComponent(config.api_key)}&assistant_id=${encodeURIComponent(config.assistant_id)}`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.ai_analysis) {
+            displayAiAnalysis(data.ai_analysis, data.ai_analysis_generated_at);
+        } else {
+            document.getElementById('aiAnalysisContent').innerHTML = 
+                '<p class="text-warning">AI аналіз не згенеровано. Спробуйте пізніше.</p>';
+            document.getElementById('aiAnalysisContent').style.display = 'block';
+        }
+        
+    } catch (error) {
+        console.error('Помилка:', error);
+        document.getElementById('aiAnalysisCard').style.display = 'block';
+        document.getElementById('aiAnalysisSpinner').style.display = 'none';
+        document.getElementById('aiAnalysisContent').innerHTML = 
+            '<p class="text-danger">Помилка при генерації AI аналізу: ' + error.message + '</p>';
+        document.getElementById('aiAnalysisContent').style.display = 'block';
+    }
+}
+
+function displayAiAnalysis(analysis, generatedAt) {
+    document.getElementById('aiAnalysisSpinner').style.display = 'none';
+    document.getElementById('aiAnalysisContent').style.display = 'block';
+    document.getElementById('aiAnalysisContent').innerHTML = formatAiAnalysis(analysis);
+    
+    if (generatedAt) {
+        const date = new Date(generatedAt);
+        document.getElementById('aiAnalysisDate').textContent = 
+            `Згенеровано: ${date.toLocaleDateString('uk-UA')} ${date.toLocaleTimeString('uk-UA')}`;
+    }
+}
+
+function formatAiAnalysis(analysis) {
+    // Форматуємо текст аналізу з розбиттям на параграфи та markdown форматуванням
+    return analysis
+        .split('\n')
+        .filter(line => line.trim())
+        .map(line => {
+            line = line.trim();
+            
+            // Обробляємо жирний текст **text**
+            line = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            // Обробляємо курсив *text*
+            line = line.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            
+            // Обробляємо заголовки
+            if (line.startsWith('##') || line.startsWith('**')) {
+                return `<h6 class="mt-3 mb-2">${line.replace(/[#*]/g, '')}</h6>`;
+            } 
+            // Обробляємо списки
+            else if (line.startsWith('-') || line.startsWith('•')) {
+                return `<li class="mb-1">${line.replace(/^[-•]\s*/, '')}</li>`;
+            } 
+            // Обробляємо емодзі заголовки
+            else if (/^[⚡️🏋️‍♂️💤😌📉📌🔥💪🚀]/.test(line)) {
+                return `<h6 class="mt-3 mb-2">${line}</h6>`;
+            }
+            // Звичайні параграфи
+            else {
+                return `<p class="mb-2">${line}</p>`;
+            }
+        })
+        .join('');
+}
+
+// Оновлюємо функцію displayStatistics для показу AI аналізу
+const originalDisplayStatistics = window.displayStatistics;
+window.displayStatistics = function(data) {
+    originalDisplayStatistics(data);
+    
+    // Завжди показуємо картку AI аналізу
+    document.getElementById('aiAnalysisCard').style.display = 'block';
+    document.getElementById('aiAnalysisSpinner').style.display = 'none';
+    
+    // Показуємо AI аналіз якщо він є, інакше повідомлення про генерацію
+    if (data.ai_analysis) {
+        displayAiAnalysis(data.ai_analysis, data.ai_analysis_generated_at);
+    } else {
+        document.getElementById('aiAnalysisContent').style.display = 'block';
+        document.getElementById('aiAnalysisContent').innerHTML = 
+            '<p class="text-muted"><i class="fas fa-info-circle"></i> AI аналіз ще не згенеровано для цього періоду. Натисніть кнопку "AI Аналіз" для генерації.</p>';
+        document.getElementById('aiAnalysisDate').textContent = '';
+    }
+}
+</script>
+{% endblock %}

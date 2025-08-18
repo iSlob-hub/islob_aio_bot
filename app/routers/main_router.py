@@ -1,3 +1,4 @@
+import re
 from aiogram import F
 from aiogram.filters import Command, StateFilter
 from aiogram.types import Message
@@ -14,6 +15,27 @@ from aiogram.types import (
 from app.db.models import User, Notification, NotificationType, MorningQuiz
 from app.keyboards import get_main_menu_keyboard, get_notifications_menu_keyboard
 import app.text_constants as tc
+
+
+def generate_username_from_name(full_name: str) -> str:
+    """Генерує username з повного імені користувача"""
+    if not full_name:
+        return "user"
+    
+    # Видаляємо всі символи крім букв та цифр, перетворюємо в нижній регістр
+    clean_name = re.sub(r'[^a-zA-Zа-яА-Я0-9\s]', '', full_name.lower())
+    # Замінюємо пробіли на підкреслення
+    username = re.sub(r'\s+', '_', clean_name.strip())
+    
+    # Обмежуємо довжину до 32 символів (ліміт Telegram)
+    if len(username) > 32:
+        username = username[:32]
+    
+    # Якщо нічого не залишилося, повертаємо дефолтне значення
+    if not username:
+        return "user"
+        
+    return username
 from app.utils.bot_utils import is_valid_morning_time
 from app.states import NotificationsState
 import datetime
@@ -52,9 +74,14 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         return
 
     if not user:
+        # Генеруємо username якщо його немає
+        generated_username = user_telegram_username or generate_username_from_name(
+            message.from_user.full_name or "Unknown User"
+        )
+        
         user = User(
             telegram_id=str(user_telegram_id),
-            telegram_username=user_telegram_username,
+            telegram_username=generated_username,
             is_verified=False,
             full_name=message.from_user.full_name or "Unknown User",
         )

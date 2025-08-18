@@ -9,6 +9,7 @@ from app.db.models import (
     Notification,
     MorningQuiz,
     TrainingSession,
+    UserStatistics,
 )
 
 
@@ -26,6 +27,7 @@ async def init_db():
         Notification,
         MorningQuiz,
         TrainingSession,
+        UserStatistics,
     ]
 
     await init_beanie(

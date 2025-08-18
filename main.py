@@ -21,6 +21,11 @@ import signal
 import sys
 from contextlib import asynccontextmanager
 
+# Налаштовуємо логування - вимикаємо докладні логи MongoDB
+logging.getLogger("pymongo").setLevel(logging.WARNING)
+logging.getLogger("pymongo.command").setLevel(logging.WARNING)
+logging.getLogger("pymongo.connection").setLevel(logging.WARNING)
+
 bot_scheduler = None
 bot = None
 

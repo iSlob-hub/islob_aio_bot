@@ -14,8 +14,8 @@ from app.routers.main_router import MainMenuState
 from app.states import TrainingState, AfterTrainingState
 from app.db.models import TrainingSession, Notification, User
 from app.keyboards import get_main_menu_keyboard
+from app.config import settings  # Додаємо імпорт settings
 import datetime
-import os
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -91,22 +91,45 @@ async def handle_how_do_you_feel_before(
     training_session = TrainingSession(
         user_id=str(callback_query.from_user.id),
         how_do_you_feel_before=int(rating),
-        training_started_at=datetime.datetime.now(tz=ZoneInfo("Europe/Kyiv")),
+        training_started_at=datetime.datetime.now(tz=ZoneInfo("UTC")),  # Використовуємо UTC
     )
     user = await User.find_one(User.telegram_id == str(callback_query.from_user.id))
 
     await training_session.save()
     training_session_id = training_session.id
 
-
-    training_pdf = URLInputFile(
-        url=f"{os.environ.get('BASE_HOST')}{user.training_file_url}",
-        filename="training_session.pdf",
-    )
-    
-    await callback_query.message.answer_document(
-        document=training_pdf, caption="Ось твій тренувальний план на сьогодні."
-    )
+    # Перевіряємо чи є файл тренування у користувача
+    if user.training_file_url:
+        base_host = settings.BASE_HOST  # Використовуємо settings замість os.environ
+        print(f"DEBUG: BASE_HOST = {base_host}, training_file_url = {user.training_file_url}")
+        if base_host:
+            try:
+                full_url = f"{base_host}{user.training_file_url}"
+                print(f"DEBUG: Full URL = {full_url}")
+                training_pdf = URLInputFile(
+                    url=full_url,
+                    filename="training_session.pdf",
+                )
+                
+                await callback_query.message.answer_document(
+                    document=training_pdf, caption="Ось твій тренувальний план на сьогодні."
+                )
+                print(f"DEBUG: Successfully sent training PDF to {callback_query.from_user.id}")
+            except Exception as e:
+                print(f"Failed to send training PDF: {e}")
+                await callback_query.message.answer(
+                    text="Не вдалося завантажити файл тренування, але ти можеш почати тренування."
+                )
+        else:
+            print("DEBUG: BASE_HOST is empty or None")
+            await callback_query.message.answer(
+                text="Файл тренування недоступний, але ти можеш почати тренування."
+            )
+    else:
+        print(f"DEBUG: User {callback_query.from_user.id} has no training_file_url")
+        await callback_query.message.answer(
+            text="У тебе немає завантаженого файлу тренування, але ти можеш почати тренування."
+        )
 
     await callback_query.message.answer(
         text="Тренування розпочато! Для завершення - натисни кнопку нижче.",
@@ -142,27 +165,41 @@ async def finish_training(callback_query: CallbackQuery, state: FSMContext) -> N
         return
 
     training_session.training_ended_at = datetime.datetime.now(
-        tz=ZoneInfo("Europe/Kyiv")
+        tz=ZoneInfo("UTC")  # Використовуємо UTC
     )
 
-    training_session.training_started_at = (
-        training_session.training_started_at.astimezone(ZoneInfo("Europe/Kyiv"))
-    )
-
-    training_session.training_duration = int(
-        round(
-            (
-                (
-                    training_session.training_ended_at
-                    - training_session.training_started_at
-                ).total_seconds()
-            )
-            / 60,
-            0,
+    # Спрощена логіка - переконуємось що обидва часи в UTC
+    if training_session.training_started_at.tzinfo is None:
+        # Якщо training_started_at наївний, вважаємо що це UTC
+        training_session.training_started_at = training_session.training_started_at.replace(
+            tzinfo=ZoneInfo("UTC")
         )
-    )
-    if training_session.training_duration < 1:
-        training_session.training_duration = 1
+    else:
+        # Якщо має timezone, конвертуємо в UTC
+        training_session.training_started_at = (
+            training_session.training_started_at.astimezone(ZoneInfo("UTC"))
+        )
+
+    # Розраховуємо тривалість
+    duration_seconds = (
+        training_session.training_ended_at - training_session.training_started_at
+    ).total_seconds()
+    
+    # Додаткова перевірка - якщо різниця негативна або дуже велика, щось не так
+    if duration_seconds < 0:
+        print(f"WARNING: Negative duration! Started: {training_session.training_started_at}, Ended: {training_session.training_ended_at}")
+        duration_seconds = 60  # Встановлюємо 1 хвилину як резервне значення
+    elif duration_seconds > 86400:  # Більше 24 годин
+        print(f"WARNING: Duration too long ({duration_seconds/3600:.1f} hours)! Started: {training_session.training_started_at}, Ended: {training_session.training_ended_at}")
+        duration_seconds = 3600  # Встановлюємо 1 годину як максимум
+    
+    training_session.training_duration = max(1, int(round(duration_seconds / 60, 0)))
+
+    # Відладкова інформація
+    print(f"DEBUG: Training started at (UTC): {training_session.training_started_at}")
+    print(f"DEBUG: Training ended at (UTC): {training_session.training_ended_at}")
+    print(f"DEBUG: Raw duration in seconds: {duration_seconds}")
+    print(f"DEBUG: Final duration in minutes: {training_session.training_duration}")
 
     await training_session.save()
 
@@ -287,17 +324,42 @@ async def handle_do_you_have_any_pain(
         )
     )
 
-    after_training_notification = Notification(
-        user_id=str(callback_query.from_user.id),
-        notification_time="12:00",
-        system_data={
-            "training_session_id": str(training_session.id),
-        },
-        notification_text="",
-        notification_type="after_training_notification",
+    # Створюємо сповіщення для наступного дня о 15:00
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    
+    next_day = datetime.now(ZoneInfo("UTC")) + timedelta(days=1)
+    next_day_date = next_day.date()
+    
+    # Перевіряємо чи вже є сповіщення на наступний день для цього користувача
+    existing_notification = await Notification.find_one(
+        {
+            "user_id": str(callback_query.from_user.id),
+            "notification_type": "after_training_notification",
+            "system_data.scheduled_date": next_day_date.isoformat(),
+            "is_active": True
+        }
     )
-
-    await after_training_notification.save()
+    
+    if existing_notification:
+        print(f"DEBUG: User {callback_query.from_user.id} already has after-training notification for {next_day_date}")
+        # Не створюємо нове сповіщення, якщо вже є
+    else:
+        # Створюємо нове сповіщення тільки якщо його ще немає
+        after_training_notification = Notification(
+            user_id=str(callback_query.from_user.id),
+            notification_time="15:00",  # Час для наступного дня
+            system_data={
+                "training_session_id": str(training_session.id),
+                "scheduled_date": next_day_date.isoformat(),  # Дата коли має відправитись
+                "sent": False  # Прапорець чи відправлено
+            },
+            notification_text="Опитування після тренування",
+            notification_type="after_training_notification",
+        )
+        
+        await after_training_notification.save()
+        print(f"DEBUG: Created after-training notification for user {callback_query.from_user.id} on {next_day_date}")
 
     training_session.completed = True
     await training_session.save()
@@ -401,6 +463,27 @@ async def handle_stress_level(callback_query: CallbackQuery, state: FSMContext) 
 
     training_session.stress_level = stress_level
     await training_session.save()
+
+    # Видаляємо ВСІ сповіщення після тренування для цього користувача на цей день
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    
+    current_date = datetime.now(ZoneInfo("UTC")).date()
+    
+    notifications_to_delete = await Notification.find(
+        {
+            "notification_type": "after_training_notification",
+            "user_id": str(callback_query.from_user.id),
+            "system_data.scheduled_date": current_date.isoformat()
+        }
+    ).to_list()
+    
+    for notification in notifications_to_delete:
+        await notification.delete()
+        print(f"Deleted after-training notification {notification.id} for user {callback_query.from_user.id}")
+    
+    if notifications_to_delete:
+        print(f"Deleted {len(notifications_to_delete)} after-training notifications for user {callback_query.from_user.id} on {current_date}")
 
     await callback_query.message.answer(
         text="Дякую за відповіді! Гарного дня!",

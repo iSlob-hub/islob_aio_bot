@@ -1,0 +1,677 @@
+{% extends "base.html" %}
+
+{% block title %}Сповіщення користувача{% endblock %}
+
+{% block extra_css %}
+<style>
+.notification-card {
+    border-left: 4px solid #007bff;
+    transition: all 0.3s ease;
+}
+
+.notification-card.inactive {
+    border-left-color: #6c757d;
+    opacity: 0.7;
+}
+
+.notification-card.active {
+    border-left-color: #28a745;
+}
+
+.notification-type-badge {
+    font-size: 0.8em;
+    padding: 0.25rem 0.5rem;
+}
+
+.form-section {
+    background-color: #f8f9fa;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    border: 1px solid #dee2e6;
+}
+
+.form-section h6 {
+    color: #495057;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.frequency-option {
+    border: 2px solid #dee2e6;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.frequency-option:hover {
+    border-color: #007bff;
+    background-color: #f8f9fa;
+}
+
+.frequency-option.selected {
+    border-color: #007bff;
+    background-color: #e3f2fd;
+}
+
+.frequency-option input[type="radio"] {
+    margin-right: 0.5rem;
+}
+
+.day-selector {
+    display: none;
+    margin-top: 1rem;
+    padding: 1rem;
+    background-color: #fff;
+    border-radius: 0.5rem;
+    border: 1px solid #dee2e6;
+}
+
+.day-button {
+    width: 45px;
+    height: 45px;
+    margin: 0.25rem;
+    border: 2px solid #dee2e6;
+    border-radius: 50%;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.day-button:hover {
+    border-color: #007bff;
+    background-color: #f8f9fa;
+}
+
+.day-button.selected {
+    border-color: #007bff;
+    background-color: #007bff;
+    color: white;
+}
+
+.weekday-button {
+    width: 60px;
+    height: 45px;
+    margin: 0.25rem;
+    border: 2px solid #dee2e6;
+    border-radius: 0.5rem;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.weekday-button:hover {
+    border-color: #007bff;
+    background-color: #f8f9fa;
+}
+
+.weekday-button.selected {
+    border-color: #007bff;
+    background-color: #007bff;
+    color: white;
+}
+
+.time-input-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.preview-section {
+    background-color: #e8f5e8;
+    border: 1px solid #c3e6c3;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.simple-form {
+    max-width: 800px;
+    margin: 0 auto;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <h2>Сповіщення користувача: {{ user.full_name }} ({{ user.telegram_id }})</h2>
+            
+            <!-- Простий інтерфейс для створення сповіщення -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5><i class="fas fa-plus-circle"></i> Створити нове сповіщення</h5>
+                </div>
+                <div class="card-body">
+                    <div class="simple-form">
+                        <form id="simpleNotificationForm">
+                            <input type="hidden" id="userId" value="{{ user.telegram_id }}">
+                            
+                            <!-- Текст сповіщення -->
+                            <div class="form-section">
+                                <h6><i class="fas fa-comment"></i> Що написати в сповіщенні?</h6>
+                                <textarea class="form-control form-control-lg" id="notificationText" rows="3" 
+                                          placeholder="Наприклад: Час для тренування! 💪" required></textarea>
+                            </div>
+                            
+                            <!-- Тип сповіщення -->
+                            <div class="form-section">
+                                <h6><i class="fas fa-bell"></i> Тип сповіщення</h6>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="frequency-option" onclick="selectNotificationType('daily_morning_notification')">
+                                            <input type="radio" name="notificationType" value="daily_morning_notification" id="typeMorning">
+                                            <label for="typeMorning">
+                                                <strong>🌅 Ранкове сповіщення</strong><br>
+                                                <small class="text-muted">Щоденне сповіщення для опитування</small>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="frequency-option" onclick="selectNotificationType('after_training_notification')">
+                                            <input type="radio" name="notificationType" value="after_training_notification" id="typeTraining">
+                                            <label for="typeTraining">
+                                                <strong>🏋️ Після тренування</strong><br>
+                                                <small class="text-muted">Опитування після тренування</small>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="frequency-option" onclick="selectNotificationType('custom_notification')">
+                                            <input type="radio" name="notificationType" value="custom_notification" id="typeCustom">
+                                            <label for="typeCustom">
+                                                <strong>⚙️ Власне сповіщення</strong><br>
+                                                <small class="text-muted">Налаштовуване сповіщення</small>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Частота для власних сповіщень -->
+                            <div class="form-section" id="frequencySection" style="display: none;">
+                                <h6><i class="fas fa-calendar"></i> Як часто надсилати?</h6>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="frequency-option" onclick="selectFrequency('daily')">
+                                            <input type="radio" name="frequency" value="daily" id="freqDaily">
+                                            <label for="freqDaily">
+                                                <strong>📅 Щодня</strong><br>
+                                                <small class="text-muted">Кожного дня в зазначений час</small>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="frequency-option" onclick="selectFrequency('weekly')">
+                                            <input type="radio" name="frequency" value="weekly" id="freqWeekly">
+                                            <label for="freqWeekly">
+                                                <strong>📋 Щотижня</strong><br>
+                                                <small class="text-muted">В обрані дні тижня</small>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="frequency-option" onclick="selectFrequency('monthly')">
+                                            <input type="radio" name="frequency" value="monthly" id="freqMonthly">
+                                            <label for="freqMonthly">
+                                                <strong>📆 Щомісяця</strong><br>
+                                                <small class="text-muted">В обрані дні місяця</small>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Вибір днів тижня -->
+                                <div class="day-selector" id="weekdaySelector">
+                                    <h6>Оберіть дні тижня:</h6>
+                                    <div class="d-flex flex-wrap justify-content-center">
+                                        <button type="button" class="weekday-button" data-day="1" onclick="toggleWeekday(this)">Пн</button>
+                                        <button type="button" class="weekday-button" data-day="2" onclick="toggleWeekday(this)">Вт</button>
+                                        <button type="button" class="weekday-button" data-day="3" onclick="toggleWeekday(this)">Ср</button>
+                                        <button type="button" class="weekday-button" data-day="4" onclick="toggleWeekday(this)">Чт</button>
+                                        <button type="button" class="weekday-button" data-day="5" onclick="toggleWeekday(this)">Пт</button>
+                                        <button type="button" class="weekday-button" data-day="6" onclick="toggleWeekday(this)">Сб</button>
+                                        <button type="button" class="weekday-button" data-day="0" onclick="toggleWeekday(this)">Нд</button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Вибір днів місяця -->
+                                <div class="day-selector" id="monthdaySelector">
+                                    <h6>Оберіть дні місяця:</h6>
+                                    <div class="d-flex flex-wrap justify-content-center">
+                                        <!-- Будуть згенеровані JS -->
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Час -->
+                            <div class="form-section">
+                                <h6><i class="fas fa-clock"></i> В який час надсилати?</h6>
+                                <div class="time-input-group">
+                                    <input type="time" class="form-control form-control-lg" id="notificationTime" required>
+                                    <span class="text-muted">За київським часом</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Попередній перегляд -->
+                            <div class="preview-section" id="previewSection" style="display: none;">
+                                <h6><i class="fas fa-eye"></i> Попередній перегляд</h6>
+                                <div id="previewText"></div>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-save"></i> Створити сповіщення
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Список існуючих сповіщень -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5><i class="fas fa-bell"></i> Існуючі сповіщення</h5>
+                    <div>
+                        <select class="form-select form-select-sm" id="filterType" style="width: auto; display: inline-block;">
+                            <option value="">Всі типи</option>
+                            <option value="daily_morning_notification">Ранкові</option>
+                            <option value="after_training_notification">Після тренування</option>
+                            <option value="custom_notification">Власні</option>
+                        </select>
+                        <button class="btn btn-outline-secondary btn-sm ms-2" onclick="loadNotifications()">
+                            <i class="fas fa-sync-alt"></i> Оновити
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body" id="notificationsContainer">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Завантаження...</span>
+                        </div>
+                        <p>Завантаження сповіщень...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentUserId = '{{ user.telegram_id }}';
+let selectedWeekdays = [];
+let selectedMonthdays = [];
+let selectedNotificationType = '';
+let selectedFrequency = '';
+
+// Завантаження даних при ініціалізації
+document.addEventListener('DOMContentLoaded', function() {
+    generateMonthdayButtons();
+    loadNotifications();
+    
+    // Обробники зміни
+    document.getElementById('filterType').addEventListener('change', loadNotifications);
+    document.getElementById('simpleNotificationForm').addEventListener('submit', createSimpleNotification);
+    
+    // Автоматичне оновлення попереднього перегляду
+    document.getElementById('notificationText').addEventListener('input', updatePreview);
+    document.getElementById('notificationTime').addEventListener('change', updatePreview);
+});
+
+function generateMonthdayButtons() {
+    const container = document.querySelector('#monthdaySelector .d-flex');
+    container.innerHTML = '';
+    
+    for (let day = 1; day <= 31; day++) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'day-button';
+        button.setAttribute('data-day', day);
+        button.textContent = day;
+        button.onclick = () => toggleMonthday(button);
+        container.appendChild(button);
+    }
+}
+
+function selectNotificationType(type) {
+    selectedNotificationType = type;
+    
+    // Очищаємо всі вибори
+    document.querySelectorAll('.frequency-option').forEach(el => el.classList.remove('selected'));
+    
+    // Додаємо клас до обраної опції
+    const option = document.querySelector(`input[value="${type}"]`).closest('.frequency-option');
+    option.classList.add('selected');
+    
+    // Показуємо/приховуємо секцію частоти
+    const frequencySection = document.getElementById('frequencySection');
+    if (type === 'custom_notification') {
+        frequencySection.style.display = 'block';
+    } else {
+        frequencySection.style.display = 'none';
+        selectedFrequency = '';
+        hideAllDaySelectors();
+    }
+    
+    updatePreview();
+}
+
+function selectFrequency(frequency) {
+    selectedFrequency = frequency;
+    
+    // Очищаємо вибори частоти
+    document.querySelectorAll('#frequencySection .frequency-option').forEach(el => el.classList.remove('selected'));
+    
+    // Додаємо клас до обраної опції
+    const option = document.querySelector(`input[value="${frequency}"]`).closest('.frequency-option');
+    option.classList.add('selected');
+    
+    // Показуємо відповідний селектор днів
+    hideAllDaySelectors();
+    
+    if (frequency === 'weekly') {
+        document.getElementById('weekdaySelector').style.display = 'block';
+    } else if (frequency === 'monthly') {
+        document.getElementById('monthdaySelector').style.display = 'block';
+    }
+    
+    // Очищаємо попередні вибори
+    selectedWeekdays = [];
+    selectedMonthdays = [];
+    document.querySelectorAll('.weekday-button, .day-button').forEach(btn => btn.classList.remove('selected'));
+    
+    updatePreview();
+}
+
+function hideAllDaySelectors() {
+    document.getElementById('weekdaySelector').style.display = 'none';
+    document.getElementById('monthdaySelector').style.display = 'none';
+}
+
+function toggleWeekday(button) {
+    const day = button.getAttribute('data-day');
+    
+    if (selectedWeekdays.includes(day)) {
+        selectedWeekdays = selectedWeekdays.filter(d => d !== day);
+        button.classList.remove('selected');
+    } else {
+        selectedWeekdays.push(day);
+        button.classList.add('selected');
+    }
+    
+    updatePreview();
+}
+
+function toggleMonthday(button) {
+    const day = button.getAttribute('data-day');
+    
+    if (selectedMonthdays.includes(day)) {
+        selectedMonthdays = selectedMonthdays.filter(d => d !== day);
+        button.classList.remove('selected');
+    } else {
+        selectedMonthdays.push(day);
+        button.classList.add('selected');
+    }
+    
+    updatePreview();
+}
+
+function updatePreview() {
+    const text = document.getElementById('notificationText').value;
+    const time = document.getElementById('notificationTime').value;
+    const previewSection = document.getElementById('previewSection');
+    const previewText = document.getElementById('previewText');
+    
+    if (!text || !selectedNotificationType || !time) {
+        previewSection.style.display = 'none';
+        return;
+    }
+    
+    let scheduleText = '';
+    
+    if (selectedNotificationType === 'daily_morning_notification') {
+        scheduleText = `Щодня о ${time} (ранкове сповіщення)`;
+    } else if (selectedNotificationType === 'after_training_notification') {
+        scheduleText = `Після тренування (системне сповіщення)`;
+    } else if (selectedNotificationType === 'custom_notification') {
+        if (selectedFrequency === 'daily') {
+            scheduleText = `Щодня о ${time}`;
+        } else if (selectedFrequency === 'weekly' && selectedWeekdays.length > 0) {
+            const dayNames = {
+                '1': 'Пн', '2': 'Вт', '3': 'Ср', '4': 'Чт', 
+                '5': 'Пт', '6': 'Сб', '0': 'Нд'
+            };
+            const days = selectedWeekdays.map(d => dayNames[d]).join(', ');
+            scheduleText = `Щотижня (${days}) о ${time}`;
+        } else if (selectedFrequency === 'monthly' && selectedMonthdays.length > 0) {
+            const days = selectedMonthdays.sort((a, b) => a - b).join(', ');
+            scheduleText = `Щомісяця (${days} числа) о ${time}`;
+        } else {
+            scheduleText = 'Оберіть дні для сповіщення';
+        }
+    }
+    
+    previewText.innerHTML = `
+        <strong>📱 Текст сповіщення:</strong> "${text}"<br>
+        <strong>⏰ Розклад:</strong> ${scheduleText}
+    `;
+    
+    previewSection.style.display = 'block';
+}
+
+async function createSimpleNotification(event) {
+    event.preventDefault();
+    
+    const text = document.getElementById('notificationText').value;
+    const time = document.getElementById('notificationTime').value;
+    
+    if (!selectedNotificationType) {
+        alert('Будь ласка, оберіть тип сповіщення');
+        return;
+    }
+    
+    // Генеруємо cron вираз на основі вибраних опцій
+    let cronExpression = '';
+    
+    if (selectedNotificationType === 'daily_morning_notification') {
+        // Для ранкових сповіщень cron не потрібен
+        cronExpression = null;
+    } else if (selectedNotificationType === 'after_training_notification') {
+        // Для сповіщень після тренування cron не потрібен
+        cronExpression = null;
+    } else if (selectedNotificationType === 'custom_notification') {
+        const [hour, minute] = time.split(':');
+        
+        if (selectedFrequency === 'daily') {
+            cronExpression = `${minute} ${hour} * * *`;
+        } else if (selectedFrequency === 'weekly') {
+            if (selectedWeekdays.length === 0) {
+                alert('Оберіть хоча б один день тижня');
+                return;
+            }
+            cronExpression = `${minute} ${hour} * * ${selectedWeekdays.join(',')}`;
+        } else if (selectedFrequency === 'monthly') {
+            if (selectedMonthdays.length === 0) {
+                alert('Оберіть хоча б один день місяця');
+                return;
+            }
+            cronExpression = `${minute} ${hour} ${selectedMonthdays.join(',')} * *`;
+        } else {
+            alert('Оберіть частоту для власного сповіщення');
+            return;
+        }
+    }
+    
+    const formData = {
+        user_id: currentUserId,
+        notification_text: text,
+        notification_type: selectedNotificationType,
+        notification_time: time,
+        custom_notification_cron: cronExpression,
+        custom_notification_execute_once: false
+    };
+    
+    try {
+        const response = await fetch('/api/notifications/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        if (response.ok) {
+            alert('Сповіщення створено успішно! 🎉');
+            
+            // Очищаємо форму
+            document.getElementById('simpleNotificationForm').reset();
+            selectedNotificationType = '';
+            selectedFrequency = '';
+            selectedWeekdays = [];
+            selectedMonthdays = [];
+            
+            // Очищаємо вибори
+            document.querySelectorAll('.frequency-option').forEach(el => el.classList.remove('selected'));
+            document.querySelectorAll('.weekday-button, .day-button').forEach(btn => btn.classList.remove('selected'));
+            
+            // Приховуємо секції
+            document.getElementById('frequencySection').style.display = 'none';
+            document.getElementById('previewSection').style.display = 'none';
+            hideAllDaySelectors();
+            
+            loadNotifications();
+        } else {
+            const error = await response.json();
+            alert('Помилка: ' + (error.detail || 'Невідома помилка'));
+        }
+    } catch (error) {
+        console.error('Помилка створення сповіщення:', error);
+        alert('Помилка створення сповіщення');
+    }
+}
+
+async function loadNotifications() {
+    try {
+        const filterType = document.getElementById('filterType').value;
+        const url = `/api/notifications/user/${currentUserId}${filterType ? `?notification_type=${filterType}` : ''}`;
+        
+        const response = await fetch(url);
+        const notifications = await response.json();
+        
+        displayNotifications(notifications);
+    } catch (error) {
+        console.error('Помилка завантаження сповіщень:', error);
+        document.getElementById('notificationsContainer').innerHTML = 
+            '<div class="alert alert-danger">Помилка завантаження сповіщень</div>';
+    }
+}
+
+function displayNotifications(notifications) {
+    const container = document.getElementById('notificationsContainer');
+    
+    if (notifications.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-muted">
+                <i class="fas fa-bell-slash fa-3x mb-3"></i>
+                <p>Сповіщення не знайдено</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const typeLabels = {
+        'daily_morning_notification': '🌅 Ранкове сповіщення',
+        'after_training_notification': '🏋️ Після тренування',
+        'custom_notification': '⚙️ Власне сповіщення'
+    };
+    
+    const notificationsHtml = notifications.map(notification => {
+        const statusClass = notification.is_active ? 'active' : 'inactive';
+        const statusIcon = notification.is_active ? 'fas fa-bell text-success' : 'fas fa-bell-slash text-muted';
+        const typeLabel = typeLabels[notification.notification_type] || notification.notification_type;
+        
+        return `
+            <div class="notification-card card mb-3 ${statusClass}">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <div class="d-flex align-items-center mb-2">
+                                <i class="${statusIcon} me-2"></i>
+                                <h6 class="mb-0">${notification.notification_text}</h6>
+                                <span class="badge bg-info notification-type-badge ms-2">
+                                    ${typeLabel}
+                                </span>
+                            </div>
+                            
+                            <div class="text-muted small">
+                                <i class="fas fa-clock me-1"></i>
+                                ${notification.cron_human_readable || `Час: ${notification.notification_time}`}
+                            </div>
+                            
+                            <div class="text-muted small mt-1">
+                                <i class="fas fa-calendar-plus me-1"></i>
+                                Створено: ${new Date(notification.created_at).toLocaleString('uk-UA')}
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4 text-end">
+                            <button class="btn btn-sm ${notification.is_active ? 'btn-warning' : 'btn-success'} me-2" 
+                                    onclick="toggleNotification('${notification.id}')">
+                                <i class="fas ${notification.is_active ? 'fa-pause' : 'fa-play'}"></i>
+                                ${notification.is_active ? 'Вимкнути' : 'Увімкнути'}
+                            </button>
+                            
+                            <button class="btn btn-sm btn-danger" onclick="deleteNotification('${notification.id}')">
+                                <i class="fas fa-trash"></i> Видалити
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    container.innerHTML = notificationsHtml;
+}
+
+async function toggleNotification(notificationId) {
+    try {
+        const response = await fetch(`/api/notifications/${notificationId}/toggle`, {
+            method: 'PUT'
+        });
+        
+        if (response.ok) {
+            loadNotifications();
+        } else {
+            alert('Помилка зміни статусу сповіщення');
+        }
+    } catch (error) {
+        console.error('Помилка:', error);
+        alert('Помилка зміни статусу сповіщення');
+    }
+}
+
+async function deleteNotification(notificationId) {
+    if (!confirm('Ви впевнені, що хочете видалити це сповіщення?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/notifications/${notificationId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            loadNotifications();
+        } else {
+            alert('Помилка видалення сповіщення');
+        }
+    } catch (error) {
+        console.error('Помилка:', error);
+        alert('Помилка видалення сповіщення');
+    }
+}
+</script>
+{% endblock %}

@@ -10,6 +10,8 @@ from typing import Optional
 from fastapi.encoders import jsonable_encoder
 from dotenv import load_dotenv
 from web_app.auth import verify_telegram_auth, get_current_user, serializer
+from web_app.statistics_router import router as statistics_router
+from web_app.notifications_router import router as notifications_router
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pathlib import Path
 from fastapi.staticfiles import StaticFiles
@@ -22,9 +24,15 @@ TG_BOT_USERNAME = os.environ.get("TG_BOT_USERNAME")
 
 ADMIN_IDS = [
     "591812219",
+    "379872548",
+    "5916038251"
 ]
 
 app = FastAPI()
+
+# Підключаємо роутери
+app.include_router(statistics_router)
+app.include_router(notifications_router)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
@@ -63,35 +71,59 @@ async def auth_telegram(
     request: Request,
     id: int,
     first_name: str = "",
+    last_name: str = "",
     username: str = "",
     photo_url: str = "",
     auth_date: str = "",
     hash: str = ""
 ):
-    user_data = {
-        "id": str(id),
-        "first_name": first_name,
-        "username": username,
-        "photo_url": photo_url,
-        "auth_date": auth_date,
-        "hash": hash
-    }
+    # Формуємо дані для перевірки, додаючи тільки непорожні поля
+    user_data = {"id": id}
     
+    if first_name:
+        user_data["first_name"] = first_name
+    if last_name:
+        user_data["last_name"] = last_name
+    if username:
+        user_data["username"] = username
+    if photo_url:
+        user_data["photo_url"] = photo_url
+    if auth_date:
+        user_data["auth_date"] = auth_date
+    
+    # Додаємо hash для перевірки
+    user_data["hash"] = hash
+    
+    print(f"DEBUG: Received auth data: {user_data}")
+    
+    # Перевіряємо валідність Telegram авторизації
+    if not verify_telegram_auth(user_data):
+        print("DEBUG: Telegram auth verification failed")
+        return templates.TemplateResponse("access_denied.html", {
+            "request": request,
+            "bot_username": TG_BOT_USERNAME,
+            "message": "Помилка авторизації Telegram."
+        })
+    
+    print(f"DEBUG: Telegram auth verified successfully for user {id}")
 
     user = await User.find_one(User.telegram_id == str(id))
     if not user:
+        print(f"DEBUG: User {id} not found in database")
         return templates.TemplateResponse("not_registered.html", {
             "request": request,
             "bot_username": TG_BOT_USERNAME
         })
     
     if user.telegram_id not in ADMIN_IDS:
+        print(f"DEBUG: User {id} is not admin")
         return templates.TemplateResponse("access_denied.html", {
             "request": request,
             "bot_username": TG_BOT_USERNAME,
             "message": "Доступ заборонено."
         })
 
+    print(f"DEBUG: Creating session for admin user {id}")
     token = serializer.dumps({"telegram_id": user.telegram_id})
 
     response = RedirectResponse("/customers")
@@ -202,5 +234,57 @@ async def morning_dashboard(request: Request, telegram_id: str, user: User = Dep
         "request": request,
         "user": user_profile,
         "quizzes": morning_quizes,
+        "current_user": user
+    })
+
+
+@app.get("/statistics", response_class=HTMLResponse)
+async def statistics_page(
+    request: Request, 
+    telegram_id: str, 
+    period_type: str = Query("weekly"),
+    user: User = Depends(get_admin_user)
+):
+    """Сторінка статистики користувача"""
+    user_profile = await User.find_one(User.telegram_id == telegram_id)
+    if not user_profile:
+        return templates.TemplateResponse(
+            "statistics.html",
+            {
+                "request": request, 
+                "error": f"No user with Telegram ID: {telegram_id}",
+                "current_user": user
+            }
+        )
+
+    return templates.TemplateResponse("statistics.html", {
+        "request": request,
+        "user": user_profile,
+        "period_type": period_type,
+        "current_user": user
+    })
+
+
+@app.get("/notifications", response_class=HTMLResponse)
+async def notifications_page(
+    request: Request, 
+    telegram_id: str, 
+    user: User = Depends(get_admin_user)
+):
+    """Сторінка управління сповіщеннями користувача"""
+    user_profile = await User.find_one(User.telegram_id == telegram_id)
+    if not user_profile:
+        return templates.TemplateResponse(
+            "notifications.html",
+            {
+                "request": request, 
+                "error": f"No user with Telegram ID: {telegram_id}",
+                "current_user": user
+            }
+        )
+
+    return templates.TemplateResponse("notifications.html", {
+        "request": request,
+        "user": user_profile,
         "current_user": user
     })
