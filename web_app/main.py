@@ -37,7 +37,10 @@ app.include_router(notifications_router)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-app.mount("/files", StaticFiles(directory="internal_files"), name="files")
+# Ensure the uploads directory exists and mount it using an absolute path
+FILES_DIR = Path(BASE_DIR).parent / "internal_files"
+FILES_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/files", StaticFiles(directory=str(FILES_DIR)), name="files")
 
 @app.on_event("startup")
 async def startup_event():
@@ -205,7 +208,8 @@ async def upload_training_file(
     user: User = Depends(get_admin_user)
 ):
     recipient = await User.find_one(User.telegram_id == user_telegram_id)
-    user_dir = Path(f"internal_files/{user_telegram_id}")
+    # Save uploads under the absolute internal files directory
+    user_dir = FILES_DIR / user_telegram_id
     user_dir.mkdir(parents=True, exist_ok=True)
 
     file_path = user_dir / file.filename
