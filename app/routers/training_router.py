@@ -14,10 +14,11 @@ from app.routers.main_router import MainMenuState
 from app.states import TrainingState, AfterTrainingState
 from app.db.models import TrainingSession, Notification, User
 from app.keyboards import get_main_menu_keyboard
-from app.config import settings  # Додаємо імпорт settings
+from app.config import settings
 import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+import app.keyboards as kb
 
 
 app_root = Path(__file__).resolve().parent.parent
@@ -78,6 +79,17 @@ async def start_training(message: Message, state: FSMContext) -> None:
         ),
     )
     await state.set_state(TrainingState.how_do_you_feel_before)
+
+
+@training_router.message(
+    F.text == tc.BACK_TO_MAIN_MENU_BUTTON, StateFilter(MainMenuState.training_menu)
+)
+async def back_to_main_menu(message: Message, state: FSMContext) -> None:
+    await message.answer(
+        text="Ага, вертаємось до головного меню",
+        reply_markup=await kb.get_main_menu_keyboard(),
+    )
+    await state.set_state(MainMenuState.main_menu)
 
 
 @training_router.callback_query(

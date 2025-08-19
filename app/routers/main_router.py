@@ -163,6 +163,9 @@ async def process_training_menu(message: Message, state: FSMContext) -> None:
             keyboard=[
                 [
                     KeyboardButton(text=tc.START_TRAINING_BUTTON),
+                ],
+                [
+                    KeyboardButton(text=tc.BACK_TO_MAIN_MENU_BUTTON)
                 ]
             ],
             resize_keyboard=True,
