@@ -24,6 +24,15 @@ class StatisticsGenerator:
         monday = today - timedelta(days=today.weekday())
         sunday = monday + timedelta(days=6, hours=23, minutes=59, seconds=59)
         return monday, sunday
+        
+    @staticmethod
+    def get_previous_week_range() -> Tuple[datetime, datetime]:
+        """Повертає початок і кінець попереднього тижня (понеділок-неділя)"""
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        this_monday = today - timedelta(days=today.weekday())
+        prev_monday = this_monday - timedelta(days=7)
+        prev_sunday = prev_monday + timedelta(days=6, hours=23, minutes=59, seconds=59)
+        return prev_monday, prev_sunday
     
     @staticmethod
     def get_current_month_range() -> Tuple[datetime, datetime]:
@@ -32,6 +41,18 @@ class StatisticsGenerator:
         start = end - timedelta(days=27)  # 28 днів загалом включаючи поточний
         start = start.replace(hour=0, minute=0, second=0, microsecond=0)
         return start, end
+        
+    @staticmethod
+    def get_previous_month_range() -> Tuple[datetime, datetime]:
+        """Повертає попередні 4 тижні (28 днів) перед поточним тижнем"""
+        # Кінець періоду - неділя попереднього тижня
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        this_monday = today - timedelta(days=today.weekday())
+        prev_sunday = this_monday - timedelta(days=1, microseconds=1)
+        # Початок періоду - за 28 днів до кінця
+        start = prev_sunday - timedelta(days=27)
+        start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+        return start, prev_sunday
     
     @staticmethod
     def generate_date_range(start_date: datetime, end_date: datetime) -> List[datetime]:
@@ -309,14 +330,27 @@ class StatisticsGenerator:
             "trend": self.calculate_trend(values)
         }
     
-    async def generate_user_statistics(self, user_id: str, period_type: PeriodType) -> UserStatistics:
-        """Головна функція генерації статистики користувача"""
+    async def generate_user_statistics(self, user_id: str, period_type: PeriodType, use_previous_period: bool = True) -> UserStatistics:
+        """
+        Головна функція генерації статистики користувача
+        
+        Args:
+            user_id: ID користувача
+            period_type: Тип періоду (тижневий/місячний)
+            use_previous_period: Якщо True, використовується попередній період, інакше - поточний
+        """
         
         # Визначаємо діапазон дат
         if period_type == PeriodType.WEEKLY:
-            start_date, end_date = self.get_current_week_range()
+            if use_previous_period:
+                start_date, end_date = self.get_previous_week_range()
+            else:
+                start_date, end_date = self.get_current_week_range()
         else:  # MONTHLY
-            start_date, end_date = self.get_current_month_range()
+            if use_previous_period:
+                start_date, end_date = self.get_previous_month_range()
+            else:
+                start_date, end_date = self.get_current_month_range()
         
         # Підраховуємо загальну кількість записів
         total_training_sessions = await TrainingSession.find({
@@ -381,47 +415,28 @@ class StatisticsGenerator:
             return stats
     
     async def generate_user_statistics_with_ai(self, user_id: str, period_type: PeriodType, 
-                                               openai_api_key: str = None, 
-                                               assistant_id: str = None) -> UserStatistics:
-        """Генерує статистику користувача з AI аналізом"""
+                                   regenerate_if_exists: bool = False,
+                                   use_previous_period: bool = True) -> Optional[UserStatistics]:
+        """Генерує статистику користувача з AI-аналізом"""
         
-        # Спочатку генеруємо звичайну статистику
-        stats = await self.generate_user_statistics(user_id, period_type)
+        if not AI_ANALYZER_AVAILABLE:
+            return None
+            
+        # Генеруємо базову статистику
+        stats = await self.generate_user_statistics(user_id, period_type, use_previous_period)
         
-        # Додаємо AI аналіз, якщо це можливо
-        if AI_ANALYZER_AVAILABLE and openai_api_key and assistant_id:
-            try:
-                analyzer = StatisticsAnalyzer(
-                    api_key=openai_api_key,
-                    assistant_id=assistant_id
-                )
-                
-                logger.info(f"Генерація AI аналізу для користувача {user_id}")
-                success = await analyzer.analyze_statistics(stats)
-                
-                if success:
-                    logger.info(f"AI аналіз успішно згенеровано для користувача {user_id}")
-                else:
-                    logger.warning(f"Не вдалося згенерувати AI аналіз для користувача {user_id}")
-                    
-            except Exception as e:
-                logger.error(f"Помилка при генерації AI аналізу для користувача {user_id}: {e}")
-        else:
-            if not AI_ANALYZER_AVAILABLE:
-                logger.warning("AI аналізатор не доступний")
-            else:
-                logger.warning("Не вказано API ключ або ID асистента для AI аналізу")
+        # TODO: додати AI аналіз статистики
         
         return stats
     
-    async def generate_statistics_for_all_users(self, period_type: PeriodType) -> List[UserStatistics]:
+    async def generate_statistics_for_all_users(self, period_type: PeriodType, use_previous_period: bool = True) -> List[UserStatistics]:
         """Генерує статистику для всіх активних користувачів"""
         active_users = await User.find({"is_active": True}).to_list()
         generated_statistics = []
         
         for user in active_users:
             try:
-                stats = await self.generate_user_statistics(user.telegram_id, period_type)
+                stats = await self.generate_user_statistics(user.telegram_id, period_type, use_previous_period)
                 generated_statistics.append(stats)
             except Exception as e:
                 print(f"Помилка при генерації статистики для користувача {user.telegram_id}: {e}")

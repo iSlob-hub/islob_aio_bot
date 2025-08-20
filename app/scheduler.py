@@ -49,8 +49,8 @@ class BotScheduler:
             self.scheduler.start()
             self._running = True
 
-            # Start statistics scheduler
-            statistics_scheduler.start_scheduler()
+            # Start statistics scheduler with bot instance
+            statistics_scheduler.start_scheduler(bot=self.bot)
 
             print("BotScheduler started successfully")
 

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Статистика тренувань</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="stats-grid">
+            <!-- Стрес -->
+            <div class="stats-card">
+                <div class="card-header stress">
+                    <h2>СТРЕС</h2>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="stressChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Складність -->
+            <div class="stats-card">
+                <div class="card-header hardness">
+                    <h2>СКЛАДНІСТЬ</h2>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="hardnessChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Сон -->
+            <div class="stats-card">
+                <div class="card-header sleep">
+                    <h2>СОН</h2>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="sleepChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Самопочуття -->
+            <div class="stats-card">
+                <div class="card-header feelings">
+                    <h2>САМОПОЧУТТЯ</h2>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="feelingsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Вага -->
+            <div class="stats-card wide">
+                <div class="card-header weight">
+                    <h2>ВАГА</h2>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="weightChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="charts.js"></script>
+</body>
+</html>

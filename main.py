@@ -3,13 +3,6 @@ from datetime import datetime
 
 from app.db.models import User
 from app.db.database import init_db
-from app.routers import (
-    main_router,
-    report_problem_router,
-    notifications_router,
-    morning_quiz_router,
-    training_router,
-)
 from aiogram.fsm.storage.mongo import MongoStorage
 from aiogram import Bot, Dispatcher
 from app.config import settings
@@ -62,11 +55,19 @@ async def main():
         dp.callback_query.middleware(ConversationTrackerMiddleware())
 
         # Include routers
-        dp.include_router(main_router.main_router)
-        dp.include_router(report_problem_router.report_problem_router)
-        dp.include_router(notifications_router.notifications_router)
-        dp.include_router(morning_quiz_router.morning_quiz_router)
-        dp.include_router(training_router.training_router)
+        from app.routers.main_router import main_router
+        from app.routers.report_problem_router import report_problem_router
+        from app.routers.notifications_router import notifications_router
+        from app.routers.morning_quiz_router import morning_quiz_router
+        from app.routers.training_router import training_router
+        from app.routers.statistics_router import statistics_router
+        
+        dp.include_router(main_router)
+        dp.include_router(report_problem_router)
+        dp.include_router(notifications_router)
+        dp.include_router(morning_quiz_router)
+        dp.include_router(training_router)
+        dp.include_router(statistics_router)
 
         # Initialize and start scheduler
         logging.info("Initializing scheduler...")

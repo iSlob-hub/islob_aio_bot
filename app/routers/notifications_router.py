@@ -315,6 +315,14 @@ async def handle_time_input(message: Message, state: FSMContext):
             "Будь ласка, введи час у форматі HH:MM (наприклад, 08:30)."
         )
         return
+        
+    # Валідація що час у межах 00:00 - 23:59
+    hours, minutes = map(int, user_input.split(':'))
+    if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
+        await message.answer(
+            "Невірний час. Години мають бути від 00 до 23, хвилини від 00 до 59."
+        )
+        return
 
     await state.update_data(time=user_input)
     data = await state.get_data()

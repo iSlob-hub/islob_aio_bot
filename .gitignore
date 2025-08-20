@@ -3,4 +3,5 @@ venv
 .env
 internal_files/
 logs/
+statistics_images/
 .DS_Store

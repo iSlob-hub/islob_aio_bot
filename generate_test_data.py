@@ -131,9 +131,36 @@ async def main():
     # Генеруємо дані за 35 днів (5 тижнів)
     await generate_test_data_for_user(test_user_id, days=35)
     
-    print("\n🎉 Генерація тестових даних завершена!")
+    # Генеруємо статистику для користувача
+    print("\n📊 Генерація статистики на основі створених даних...")
+    from app.statistics import StatisticsGenerator
+    from app.db.models import PeriodType
+    
+    stats_generator = StatisticsGenerator()
+    
+    # Генеруємо тижневу статистику
+    weekly_stats = await stats_generator.generate_user_statistics(test_user_id, PeriodType.WEEKLY)
+    print(f"✅ Згенеровано тижневу статистику для користувача {test_user_id}")
+    print("   Дані у тижневій статистиці:")
+    print(f"   - Точок даних у stress_data: {len(weekly_stats.stress_data.get('data_points', [])) if weekly_stats.stress_data else 0}")
+    print(f"   - Точок даних у warehouse_data: {len(weekly_stats.warehouse_data.get('data_points', [])) if weekly_stats.warehouse_data else 0}")
+    print(f"   - Точок даних у sleep_data: {len(weekly_stats.sleep_data.get('data_points', [])) if weekly_stats.sleep_data else 0}")
+    print(f"   - Точок даних у wellbeing_data: {len(weekly_stats.wellbeing_data.get('data_points', [])) if weekly_stats.wellbeing_data else 0}")
+    print(f"   - Точок даних у weight_data: {len(weekly_stats.weight_data.get('data_points', [])) if weekly_stats.weight_data else 0}")
+    
+    # Генеруємо місячну статистику
+    monthly_stats = await stats_generator.generate_user_statistics(test_user_id, PeriodType.MONTHLY)
+    print(f"✅ Згенеровано місячну статистику для користувача {test_user_id}")
+    print("   Дані у місячній статистиці:")
+    print(f"   - Точок даних у stress_data: {len(monthly_stats.stress_data.get('data_points', [])) if monthly_stats.stress_data else 0}")
+    print(f"   - Точок даних у warehouse_data: {len(monthly_stats.warehouse_data.get('data_points', [])) if monthly_stats.warehouse_data else 0}")
+    print(f"   - Точок даних у sleep_data: {len(monthly_stats.sleep_data.get('data_points', [])) if monthly_stats.sleep_data else 0}")
+    print(f"   - Точок даних у wellbeing_data: {len(monthly_stats.wellbeing_data.get('data_points', [])) if monthly_stats.wellbeing_data else 0}")
+    print(f"   - Точок даних у weight_data: {len(monthly_stats.weight_data.get('data_points', [])) if monthly_stats.weight_data else 0}")
+    
+    print("\n🎉 Генерація тестових даних та статистики завершена!")
     print(f"Користувач: {test_user_id}")
-    print("Тепер можна тестувати систему статистики")
+    print("Тепер можна тестувати систему статистики і візуалізацію")
 
 
 if __name__ == "__main__":

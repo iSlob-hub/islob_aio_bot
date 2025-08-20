@@ -6,10 +6,12 @@ import asyncio
 from datetime import datetime
 from typing import Optional, Dict, Any
 import logging
-
+from dotenv import load_dotenv
+import os
 logger = logging.getLogger(__name__)
 
-# Імпорт OpenAI буде додано після встановлення пакету
+load_dotenv()
+
 try:
     from openai import AsyncOpenAI
     OPENAI_AVAILABLE = True
@@ -18,7 +20,7 @@ except ImportError:
     logger.warning("OpenAI пакет не встановлено. Встановіть: pip install openai")
 
 # Конфігурація - додайте ці змінні у ваш .env файл
-OPENAI_API_KEY = "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"  # Замініть на ваш API ключ
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 OPENAI_ASSISTANT_ID = "asst_kofjAVUVCR3kr7qV0NzJpfPS"  # Замініть на ID вашого асистента
 
 
