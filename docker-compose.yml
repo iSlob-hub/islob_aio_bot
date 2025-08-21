@@ -1,19 +1,6 @@
 version: '3.8'
 
 services:
-  mongodb:
-    image: mongo:latest
-    container_name: mongodb-islob
-    environment:
-      MONGO_INITDB_DATABASE: islobbotdev
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    networks:
-      - islob-network
 
   islob-bot:
     build: .
@@ -22,9 +9,6 @@ services:
       - ENVIRONMENT=production
     env_file:
       - .env
-    depends_on:
-      mongodb:
-        condition: service_started
     restart: unless-stopped
     volumes:
       - ./logs:/app/logs
@@ -32,8 +16,6 @@ services:
       - islob-network
     command: >
       sh -c "
-        echo 'Waiting for MongoDB to be ready...' &&
-        sleep 10 &&
         python main.py
       "
 
@@ -42,18 +24,15 @@ services:
       context: .
       dockerfile: Dockerfile.web
     ports:
-      - "8000:8000"
+      - "8080:8080"
     volumes:
       - .:/app
     env_file:
       - .env
-    command: uvicorn web_app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn web_app.main:app --host 0.0.0.0 --port 8080 --reload
     networks:
       - islob-network
 
 networks:
   islob-network:
     driver: bridge
-
-volumes:
-  mongo_data:

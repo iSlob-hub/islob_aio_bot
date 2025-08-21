@@ -16,7 +16,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ./ .
 COPY  .env .
 
-# Create logs directory
 RUN mkdir -p logs
 
 # Run the bot
