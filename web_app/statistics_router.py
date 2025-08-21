@@ -63,7 +63,8 @@ async def get_user_statistics_endpoint(
                 status_code=404,
                 detail=f"Статистика для користувача {user_id} не знайдена"
             )
-        
+
+        stats = stats["statistics"]
         return StatisticsResponse(
             user_id=stats.user_id,
             period_type=stats.period_type.value,
