@@ -5,3 +5,4 @@ internal_files/
 logs/
 statistics_images/
 .DS_Store
+*default.instructions.md

@@ -54,13 +54,27 @@ morning_quiz_router = Router()
 
 def validate_transform_time(time_str: str) -> Optional[float]:
     try:
+        # Спроба конвертувати як просто число (годин)
         sleep_time = float(time_str)
+        # Перевірка, що не перевищує 24 години
+        if sleep_time < 0 or sleep_time > 24:
+            return None
     except ValueError:
+        # Спроба конвертувати з формату ГГ:ХХ
         try:
             hours, minutes = time_str.split(":")
             hours = int(hours)
             minutes = int(minutes)
+            
+            # Перевірка валідності годин та хвилин
+            if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
+                return None
+                
             sleep_time = hours + minutes / 60.0
+            
+            # Перевірка, що загальна кількість годин не перевищує 24
+            if sleep_time > 24:
+                return None
         except ValueError:
             return None
 
@@ -135,6 +149,13 @@ async def handle_how_do_you_feel(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         await state.clear()
         await state.set_state(MainMenuState.main_menu)
+        return
+
+    if not 1 <= int(feeling) <= 10:
+        await callback.message.edit_text(
+            "❌ Невірний формат. Має бути число від 1 до 10."
+        )
+        await callback.answer()
         return
 
     morning_quiz = await MorningQuiz.get(morning_quiz_id)
@@ -293,6 +314,12 @@ async def handle_weight(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Невірний формат ваги. Введи число.")
         return
+    
+
+    if  weight > 150 or weight < 30:
+        await message.answer("❌ Невірний формат ваги. Має бути число від 30 до 150.")
+        return
+
 
     state_data = await state.get_data()
     morning_quiz_id = state_data.get("morning_quiz_id")
