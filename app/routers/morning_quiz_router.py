@@ -78,7 +78,7 @@ def validate_transform_time(time_str: str) -> Optional[float]:
         except ValueError:
             return None
 
-    return sleep_time
+    return round(sleep_time, 2)
 
 
 def convert_time_to_datetime(time_str: str) -> Optional[datetime.datetime]:
