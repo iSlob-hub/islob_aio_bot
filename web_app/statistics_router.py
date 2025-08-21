@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Query, Depends
-from app.statistics_scheduler import get_user_statistics, generate_statistics_manually
+from app.statistics_scheduler import get_user_statistics
 from app.db.models import UserStatistics, PeriodType, User
 from web_app.auth import get_current_user
 from pydantic import BaseModel
@@ -48,20 +48,30 @@ async def get_user_statistics_endpoint(
     user_id: str,
     period_type: str = Query("weekly", regex="^(weekly|monthly)$"),
     generate_if_missing: bool = Query(True),
+    current_period: bool = Query(False, description="Отримати статистику за поточний період (тільки для адміністраторів)"),
     admin_user: User = Depends(get_admin_user)
 ) -> StatisticsResponse:
-    """Отримати статистику користувача"""
+    """Отримати статистику користувача
+    
+    Якщо параметр current_period=True, повертає статистику за поточний період.
+    За замовчуванням повертає статистику за попередній період.
+    """
     try:
+        # Використовуємо параметр current_period для визначення типу періоду
+        # Для current_period=True: use_previous_period=False (поточний період)
+        # Для current_period=False: use_previous_period=True (попередній період)
         stats = await get_user_statistics(
             user_id=user_id,
             period_type=period_type,
-            generate_if_missing=generate_if_missing
+            generate_if_missing=generate_if_missing,
+            use_previous_period=not current_period
         )
         
-        if not stats:
+        if not stats or not stats.get("statistics"):
+            period_desc = "поточний" if current_period else "попередній"
             raise HTTPException(
                 status_code=404,
-                detail=f"Статистика для користувача {user_id} не знайдена"
+                detail=f"Статистика для користувача {user_id} за {period_desc} {period_type} період не знайдена"
             )
 
         stats = stats["statistics"]
@@ -91,11 +101,34 @@ async def get_user_statistics_endpoint(
 async def generate_user_statistics_endpoint(
     user_id: str,
     period_type: str = Query("weekly", regex="^(weekly|monthly)$"),
+    current_period: bool = Query(False, description="Генерувати статистику за поточний період"),
     admin_user: User = Depends(get_admin_user)
 ) -> StatisticsResponse:
-    """Згенерувати статистику для користувача вручну"""
+    """Згенерувати статистику для користувача вручну
+    
+    Якщо параметр current_period=True, генерує статистику за поточний період.
+    За замовчуванням генерує статистику за попередній період.
+    """
     try:
-        stats = await generate_statistics_manually(user_id=user_id, period_type=period_type)
+        from app.statistics import StatisticsGenerator
+        from app.db.models import PeriodType
+        
+        # Перевіряємо чи існує користувач
+        user = await User.find_one({"telegram_id": user_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="Користувача не знайдено")
+            
+        # Тепер замість generate_statistics_manually викликаємо напряму StatisticsGenerator,
+        # щоб мати можливість передати параметр use_previous_period
+        period_enum = PeriodType.WEEKLY if period_type == "weekly" else PeriodType.MONTHLY
+        generator = StatisticsGenerator()
+        
+        # Генеруємо статистику з вказаним параметром use_previous_period
+        stats = await generator.generate_user_statistics(
+            user_id=user_id, 
+            period_type=period_enum, 
+            use_previous_period=not current_period
+        )
         
         return StatisticsResponse(
             user_id=stats.user_id,
@@ -122,12 +155,36 @@ async def generate_user_statistics_endpoint(
 @router.post("/generate/all")
 async def generate_all_statistics_endpoint(
     period_type: str = Query("weekly", regex="^(weekly|monthly)$"),
+    current_period: bool = Query(False, description="Генерувати статистику за поточний період"),
     admin_user: User = Depends(get_admin_user)
 ) -> List[StatisticsResponse]:
-    """Згенерувати статистику для всіх користувачів"""
+    """Згенерувати статистику для всіх користувачів
+    
+    Якщо параметр current_period=True, генерує статистику за поточний період.
+    За замовчуванням генерує статистику за попередній період.
+    """
     try:
-        stats_list = await generate_statistics_manually(period_type=period_type)
+        from app.statistics import StatisticsGenerator
+        from app.db.models import PeriodType
         
+        # Замість generate_statistics_manually викликаємо напряму StatisticsGenerator,
+        # щоб мати можливість передати параметр use_previous_period
+        period_enum = PeriodType.WEEKLY if period_type == "weekly" else PeriodType.MONTHLY
+        generator = StatisticsGenerator()
+        
+        # Генеруємо статистику з вказаним параметром use_previous_period
+        stats_list = await generator.generate_statistics_for_all_users(
+            period_type=period_enum, 
+            use_previous_period=not current_period
+        )
+        
+        if not stats_list:
+            period_desc = "поточний" if current_period else "попередній"
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Статистика за {period_desc} {period_type} період не знайдена"
+            )
+
         return [
             StatisticsResponse(
                 user_id=stats.user_id,
@@ -158,16 +215,34 @@ async def get_user_statistics_history(
     user_id: str,
     period_type: str = Query("weekly", regex="^(weekly|monthly)$"),
     limit: int = Query(10, ge=1, le=100),
+    current_period: bool = Query(False, description="Включати статистику за поточний період"),
     admin_user: User = Depends(get_admin_user)
 ) -> List[StatisticsResponse]:
-    """Отримати історію статистики користувача"""
+    """Отримати історію статистики користувача
+    
+    Якщо параметр current_period=True, буде включена також статистика за поточний період
+    (якщо вона існує). За замовчуванням повертаються тільки завершені періоди.
+    """
     try:
         period = PeriodType.WEEKLY if period_type.lower() == "weekly" else PeriodType.MONTHLY
+        from app.statistics import StatisticsGenerator
         
-        stats_list = await UserStatistics.find(
-            UserStatistics.user_id == user_id,
-            UserStatistics.period_type == period
-        ).sort([("period_start", -1)]).limit(limit).to_list()
+        # Визначаємо діапазон дат для поточного періоду
+        stats_generator = StatisticsGenerator()
+        if period == PeriodType.WEEKLY:
+            current_start, current_end = stats_generator.get_current_week_range()
+        else:
+            current_start, current_end = stats_generator.get_current_month_range()
+        
+        # Будуємо запит в базу даних
+        query = [UserStatistics.user_id == user_id, UserStatistics.period_type == period]
+        
+        # Якщо не потрібно включати поточний період, додаємо фільтр
+        if not current_period:
+            query.append(UserStatistics.period_start < current_start)
+        
+        # Виконуємо запит до бази
+        stats_list = await UserStatistics.find(*query).sort([("period_start", -1)]).limit(limit).to_list()
         
         return [
             StatisticsResponse(
@@ -209,8 +284,9 @@ async def get_ai_config(admin_user: User = Depends(get_admin_user)):
     return {
         "has_api_key": bool(settings.OPENAI_API_KEY),
         "has_assistant_id": bool(settings.OPENAI_ASSISTANT_ID),
-        "api_key": settings.OPENAI_API_KEY if settings.OPENAI_API_KEY else None,
-        "assistant_id": settings.OPENAI_ASSISTANT_ID if settings.OPENAI_ASSISTANT_ID else None
+        # Більше не відправляємо ключі і ID на фронтенд
+        "api_key": None,
+        "assistant_id": None
     }
 
 
@@ -218,11 +294,14 @@ async def get_ai_config(admin_user: User = Depends(get_admin_user)):
 async def generate_statistics_with_ai_endpoint(
     user_id: str,
     period_type: str = Query("weekly", regex="^(weekly|monthly)$"),
-    openai_api_key: str = Query(..., description="OpenAI API ключ"),
-    assistant_id: str = Query(..., description="ID OpenAI Assistant"),
+    current_period: bool = Query(False, description="Генерувати статистику за поточний період"),
     admin_user: User = Depends(get_admin_user)
 ):
-    """Генерація статистики з AI аналізом"""
+    """Генерація статистики з AI аналізом
+    
+    Якщо параметр current_period=True, генерує статистику за поточний період.
+    За замовчуванням генерує статистику за попередній період.
+    """
     
     try:
         from app.statistics import StatisticsGenerator
@@ -241,10 +320,16 @@ async def generate_statistics_with_ai_endpoint(
         stats = await generator.generate_user_statistics_with_ai(
             user_id=user_id,
             period_type=period_enum,
-            openai_api_key=openai_api_key,
-            assistant_id=assistant_id
+            use_previous_period=not current_period
         )
         
+        if not stats:
+            period_desc = "поточний" if current_period else "попередній"
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Не вдалося згенерувати AI аналіз для {period_desc} {period_type} періоду"
+            )
+            
         return StatisticsResponse(
             user_id=stats.user_id,
             period_type=stats.period_type.value,

@@ -72,7 +72,14 @@
                                 <option value="monthly" {% if period_type == 'monthly' %}selected{% endif %}>Місячна (4 тижні)</option>
                             </select>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-3">
+                            <label for="currentPeriodToggle" class="form-label">Період:</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="currentPeriodToggle" onchange="loadStatistics()">
+                                <label class="form-check-label" for="currentPeriodToggle">Показати поточний період</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
                             <label class="form-label">&nbsp;</label><br>
                             <button class="btn btn-primary" onclick="generateStatistics()">
                                 <i class="fas fa-chart-line"></i> Згенерувати заново
@@ -242,6 +249,16 @@ let charts = {};
 
 // Завантаження статистики при завантаженні сторінки
 document.addEventListener('DOMContentLoaded', function() {
+    // Ініціалізуємо перемикач періоду за замовчуванням як попередній (false)
+    document.getElementById('currentPeriodToggle').checked = false;
+    
+    // Додаємо обробник подій для перемикача
+    document.getElementById('currentPeriodToggle').addEventListener('change', function() {
+        const periodLabel = this.checked ? "поточний" : "попередній";
+        document.querySelector('label[for="currentPeriodToggle"]').textContent = `Показати ${periodLabel} період`;
+        loadStatistics();
+    });
+    
     loadStatistics();
 });
 
@@ -283,9 +300,10 @@ async function loadStatistics() {
     showLoading();
     
     const periodType = document.getElementById('periodType').value;
+    const currentPeriod = document.getElementById('currentPeriodToggle').checked;
     
     try {
-        const response = await fetch(`/api/statistics/user/${currentUserId}?period_type=${periodType}`);
+        const response = await fetch(`/api/statistics/user/${currentUserId}?period_type=${periodType}&current_period=${currentPeriod}`);
         
         if (!response.ok) {
             if (response.status === 404) {
@@ -298,6 +316,12 @@ async function loadStatistics() {
         const data = await response.json();
         displayStatistics(data);
         
+        // Оновлюємо підпис періоду, щоб показати, що це поточний період
+        if (currentPeriod) {
+            document.getElementById('periodRange').innerHTML = 
+                `${document.getElementById('periodRange').textContent} <span class="badge bg-info ms-1">Поточний</span>`;
+        }
+        
     } catch (error) {
         console.error('Помилка завантаження статистики:', error);
         showError('Помилка завантаження статистики: ' + error.message);
@@ -308,9 +332,10 @@ async function generateStatistics() {
     showLoading();
     
     const periodType = document.getElementById('periodType').value;
+    const currentPeriod = document.getElementById('currentPeriodToggle').checked;
     
     try {
-        const response = await fetch(`/api/statistics/generate/${currentUserId}?period_type=${periodType}`, {
+        const response = await fetch(`/api/statistics/generate/${currentUserId}?period_type=${periodType}&current_period=${currentPeriod}`, {
             method: 'POST'
         });
         
@@ -320,6 +345,12 @@ async function generateStatistics() {
         
         const data = await response.json();
         displayStatistics(data);
+        
+        // Оновлюємо підпис періоду, щоб показати, що це поточний період
+        if (currentPeriod) {
+            document.getElementById('periodRange').innerHTML = 
+                `${document.getElementById('periodRange').textContent} <span class="badge bg-info ms-1">Поточний</span>`;
+        }
         
     } catch (error) {
         console.error('Помилка генерації статистики:', error);
@@ -643,6 +674,7 @@ async function generateAiAnalysisDirectly() {
         }
         
         const periodType = document.getElementById('periodType').value;
+        const currentPeriod = document.getElementById('currentPeriodToggle').checked;
         const userId = currentUserId;
         
         // Показуємо картку з спінером
@@ -651,7 +683,7 @@ async function generateAiAnalysisDirectly() {
         document.getElementById('aiAnalysisContent').style.display = 'none';
         
         // Відправляємо запит
-        const response = await fetch(`/api/statistics/generate-with-ai/${userId}?period_type=${periodType}&openai_api_key=${encodeURIComponent(config.api_key)}&assistant_id=${encodeURIComponent(config.assistant_id)}`, {
+        const response = await fetch(`/api/statistics/generate-with-ai/${userId}?period_type=${periodType}&current_period=${currentPeriod}`, {
             method: 'POST',
             credentials: 'include'
         });

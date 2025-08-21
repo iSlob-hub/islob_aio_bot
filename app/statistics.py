@@ -425,7 +425,21 @@ class StatisticsGenerator:
         # Генеруємо базову статистику
         stats = await self.generate_user_statistics(user_id, period_type, use_previous_period)
         
-        # TODO: додати AI аналіз статистики
+        # Генеруємо AI аналіз статистики
+        try:
+            from app.ai_analyzer import StatisticsAnalyzer
+            
+            # Створюємо аналізатор з ключами з середовища
+            analyzer = StatisticsAnalyzer()
+            
+            # Аналізуємо статистику
+            analysis_success = await analyzer.analyze_statistics(stats)
+            
+            if not analysis_success:
+                logger.warning(f"Не вдалося створити AI аналіз для користувача {user_id}")
+        
+        except Exception as e:
+            logger.error(f"Помилка при генерації AI аналізу: {e}")
         
         return stats
     
