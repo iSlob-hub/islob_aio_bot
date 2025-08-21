@@ -199,7 +199,7 @@ class BotScheduler:
             current_time = datetime.now(tz=zone_info)
             current_time_str = current_time.strftime("%H:%M")
             print(f"DEBUG: Checking after-training notifications at {current_time_str}")
-            if current_time_str != "05:07":
+            if current_time_str != "15:00":
                 return
                 
             # Поточна дата
