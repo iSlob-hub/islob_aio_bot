@@ -15,21 +15,18 @@ from app.routers.main_router import MainMenuState
 from app.db.models import MorningQuiz, Notification, NotificationType
 import datetime
 from app.keyboards import get_main_menu_keyboard
+from app.db.templates_utils import get_template
 
 
 async def create_gym_reminder_notification(user_id: str, gym_time: datetime.datetime):
-    """Створює нагадування про тренування в запланований час"""
     try:
-        # Видаляємо старі нагадування про тренування для цього користувача
         await Notification.find({
             "user_id": user_id,
             "notification_type": "gym_reminder_notification"
         }).delete()
         
-        # Час нагадування - саме в час тренування
         reminder_time = gym_time
         
-        # Створюємо нове сповіщення
         notification = Notification(
             user_id=user_id,
             notification_time=reminder_time.strftime("%H:%M"),
@@ -54,25 +51,19 @@ morning_quiz_router = Router()
 
 def validate_transform_time(time_str: str) -> Optional[float]:
     try:
-        # Спроба конвертувати як просто число (годин)
         sleep_time = float(time_str)
-        # Перевірка, що не перевищує 24 години
         if sleep_time < 0 or sleep_time > 24:
             return None
     except ValueError:
-        # Спроба конвертувати з формату ГГ:ХХ
         try:
             hours, minutes = time_str.split(":")
             hours = int(hours)
             minutes = int(minutes)
-            
-            # Перевірка валідності годин та хвилин
             if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
                 return None
                 
             sleep_time = hours + minutes / 60.0
             
-            # Перевірка, що загальна кількість годин не перевищує 24
             if sleep_time > 24:
                 return None
         except ValueError:

@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+
+{% block title %}Налаштування бота{% endblock %}
+
+{% block extra_css %}
+<style>
+    .template-list {
+        max-height: calc(100vh - 200px);
+        overflow-y: auto;
+        border-right: 1px solid #dee2e6;
+    }
+    .template-list-item {
+        cursor: pointer;
+        padding: 10px 15px;
+        border-bottom: 1px solid #eee;
+    }
+    .template-list-item:hover {
+        background-color: #f5f5f5;
+    }
+    .template-list-item.active {
+        background-color: #e9ecef;
+        font-weight: bold;
+    }
+    .template-editor {
+        padding: 15px;
+    }
+    .template-preview {
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+        margin-top: 10px;
+        white-space: pre-wrap;
+    }
+    .search-box {
+        margin-bottom: 15px;
+        width: 100%;
+    }
+    .template-key {
+        font-weight: bold;
+    }
+    .template-description {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    #templateText {
+        min-height: 150px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Налаштування бота</h1>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Текстові константи</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="input-group mb-3">
+                            <input type="text" class="form-control" id="searchTemplates" placeholder="Пошук шаблонів...">
+                            <button class="btn btn-outline-secondary" type="button" id="btnClearSearch">✕</button>
+                        </div>
+                        <div class="template-list" id="templateList">
+                            <div class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Завантаження...</span>
+                                </div>
+                                <p class="mt-2">Завантаження шаблонів...</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div id="templateEditorContainer" class="d-none">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i> Редагуйте текстові шаблони, які використовуються в боті. Зміни вступають в силу після збереження.
+                            </div>
+                            <form id="templateForm">
+                                <input type="hidden" id="templateId" name="templateId">
+                                
+                                <div class="mb-3">
+                                    <label for="templateKey" class="form-label">Ключ шаблону</label>
+                                    <input type="text" class="form-control" id="templateKey" disabled>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="templateDescription" class="form-label">Опис</label>
+                                    <input type="text" class="form-control" id="templateDescription" name="description">
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="templateText" class="form-label">Текст шаблону</label>
+                                    <textarea class="form-control" id="templateText" name="templateText" rows="6"></textarea>
+                                    <small class="form-text text-muted">
+                                        Підтримує змінні у форматі {variable_name} і HTML-теги для форматування.
+                                    </small>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Попередній перегляд</label>
+                                    <div class="template-preview" id="templatePreview"></div>
+                                </div>
+                                
+                                <div class="d-flex justify-content-between">
+                                    <button type="button" class="btn btn-secondary" id="btnCancelEdit">Скасувати</button>
+                                    <button type="submit" class="btn btn-primary">Зберегти зміни</button>
+                                </div>
+                            </form>
+                        </div>
+                        <div id="noTemplateSelected" class="text-center py-5">
+                            <i class="fas fa-arrow-left fa-2x mb-3 text-muted"></i>
+                            <p class="text-muted">Виберіть шаблон зі списку зліва для редагування</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Управління кешем</h5>
+            </div>
+            <div class="card-body">
+                <p>
+                    Для покращення продуктивності, текстові шаблони зберігаються в кеші. 
+                    Натисніть кнопку нижче, щоб очистити кеш і змусити бота завантажити найновіші версії шаблонів з бази даних.
+                </p>
+                <button type="button" class="btn btn-warning" id="btnClearCache">
+                    <i class="fas fa-sync"></i> Очистити кеш шаблонів
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // DOM Elements
+    const templateList = document.getElementById('templateList');
+    const templateForm = document.getElementById('templateForm');
+    const templateEditorContainer = document.getElementById('templateEditorContainer');
+    const noTemplateSelected = document.getElementById('noTemplateSelected');
+    const templateIdInput = document.getElementById('templateId');
+    const templateKeyInput = document.getElementById('templateKey');
+    const templateDescriptionInput = document.getElementById('templateDescription');
+    const templateTextInput = document.getElementById('templateText');
+    const templatePreview = document.getElementById('templatePreview');
+    const searchInput = document.getElementById('searchTemplates');
+    const btnClearSearch = document.getElementById('btnClearSearch');
+    const btnClearCache = document.getElementById('btnClearCache');
+    const btnCancelEdit = document.getElementById('btnCancelEdit');
+    
+    // Global variables
+    let allTemplates = [];
+    let currentTemplateId = null;
+    
+    // Functions
+    async function loadTemplates(search = '') {
+        try {
+            const url = `/api/bot-settings/text-templates${search ? `?search=${encodeURIComponent(search)}` : ''}`;
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                throw new Error(`Помилка запиту: ${response.status}`);
+            }
+            
+            const templates = await response.json();
+            allTemplates = templates;
+            renderTemplateList(templates);
+            
+        } catch (error) {
+            console.error('Помилка завантаження шаблонів:', error);
+            showError('Не вдалося завантажити шаблони. Спробуйте оновити сторінку.');
+        }
+    }
+    
+    function renderTemplateList(templates) {
+        templateList.innerHTML = '';
+        
+        if (templates.length === 0) {
+            templateList.innerHTML = `
+                <div class="text-center py-4">
+                    <p class="text-muted">Шаблонів не знайдено</p>
+                </div>
+            `;
+            return;
+        }
+        
+        templates.forEach(template => {
+            const item = document.createElement('div');
+            item.className = `template-list-item ${template.id === currentTemplateId ? 'active' : ''}`;
+            item.dataset.id = template.id;
+            
+            item.innerHTML = `
+                <div class="template-key">${template.template_key}</div>
+                <div class="template-description">${template.description || 'Немає опису'}</div>
+            `;
+            
+            item.addEventListener('click', () => selectTemplate(template.id));
+            templateList.appendChild(item);
+        });
+    }
+    
+    async function selectTemplate(templateId) {
+        try {
+            currentTemplateId = templateId;
+            
+            // Update active class in list
+            document.querySelectorAll('.template-list-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.id === templateId);
+            });
+            
+            // Get template details
+            const response = await fetch(`/api/bot-settings/text-templates/${templateId}`);
+            
+            if (!response.ok) {
+                throw new Error(`Помилка запиту: ${response.status}`);
+            }
+            
+            const template = await response.json();
+            
+            // Fill the form
+            templateIdInput.value = template.id;
+            templateKeyInput.value = template.template_key;
+            templateDescriptionInput.value = template.description || '';
+            templateTextInput.value = template.template_text;
+            
+            // Update preview
+            updatePreview();
+            
+            // Show editor, hide placeholder
+            templateEditorContainer.classList.remove('d-none');
+            noTemplateSelected.classList.add('d-none');
+            
+        } catch (error) {
+            console.error('Помилка завантаження деталей шаблону:', error);
+            showError('Не вдалося завантажити деталі шаблону.');
+        }
+    }
+    
+    function updatePreview() {
+        const text = templateTextInput.value;
+        templatePreview.innerHTML = text;
+    }
+    
+    async function saveTemplate(event) {
+        event.preventDefault();
+        
+        if (!currentTemplateId) {
+            return;
+        }
+        
+        try {
+            const templateData = {
+                template_text: templateTextInput.value,
+                description: templateDescriptionInput.value
+            };
+            
+            const response = await fetch(`/api/bot-settings/text-templates/${currentTemplateId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(templateData)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Помилка запиту: ${response.status}`);
+            }
+            
+            const updatedTemplate = await response.json();
+            
+            // Update in the list
+            const search = searchInput.value;
+            await loadTemplates(search);
+            
+            showSuccess('Шаблон успішно оновлено!');
+            
+        } catch (error) {
+            console.error('Помилка збереження шаблону:', error);
+            showError('Не вдалося зберегти шаблон. Спробуйте ще раз.');
+        }
+    }
+    
+    async function clearCache() {
+        try {
+            const response = await fetch('/api/bot-settings/clear-template-cache');
+            
+            if (!response.ok) {
+                throw new Error(`Помилка запиту: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            showSuccess(result.message || 'Кеш шаблонів успішно очищено!');
+            
+        } catch (error) {
+            console.error('Помилка очищення кешу:', error);
+            showError('Не вдалося очистити кеш шаблонів. Спробуйте ще раз.');
+        }
+    }
+    
+    function cancelEdit() {
+        currentTemplateId = null;
+        templateForm.reset();
+        templateEditorContainer.classList.add('d-none');
+        noTemplateSelected.classList.remove('d-none');
+        
+        // Remove active class from all items
+        document.querySelectorAll('.template-list-item').forEach(item => {
+            item.classList.remove('active');
+        });
+    }
+    
+    function showSuccess(message) {
+        // You can implement a toast or notification system here
+        alert(message);
+    }
+    
+    function showError(message) {
+        // You can implement a toast or notification system here
+        alert(`Помилка: ${message}`);
+    }
+    
+    // Event Listeners
+    templateForm.addEventListener('submit', saveTemplate);
+    templateTextInput.addEventListener('input', updatePreview);
+    searchInput.addEventListener('input', debounce((e) => loadTemplates(e.target.value), 300));
+    btnClearSearch.addEventListener('click', () => {
+        searchInput.value = '';
+        loadTemplates('');
+    });
+    btnClearCache.addEventListener('click', clearCache);
+    btnCancelEdit.addEventListener('click', cancelEdit);
+    
+    // Utility Functions
+    function debounce(func, wait) {
+        let timeout;
+        return function(...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), wait);
+        };
+    }
+    
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        loadTemplates();
+    });
+</script>
+{% endblock %}

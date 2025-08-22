@@ -122,3 +122,13 @@ class UserStatistics(Document):
 
     class Settings:
         name = "user_statistics"
+
+
+class TextTemplate(Document):
+    template_key: str = Field(index=True)
+    template_text: str
+    description: Optional[str] = None
+    last_updated: datetime = Field(default_factory=datetime.now)
+    
+    class Settings:
+        name = "text_templates"

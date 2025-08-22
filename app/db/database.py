@@ -10,6 +10,7 @@ from app.db.models import (
     MorningQuiz,
     TrainingSession,
     UserStatistics,
+    TextTemplate,
 )
 
 
@@ -28,6 +29,7 @@ async def init_db():
         MorningQuiz,
         TrainingSession,
         UserStatistics,
+        TextTemplate,
     ]
 
     await init_beanie(

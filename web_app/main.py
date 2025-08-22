@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from web_app.auth import verify_telegram_auth, get_current_user, serializer
 from web_app.statistics_router import router as statistics_router
 from web_app.notifications_router import router as notifications_router
+from web_app.bot_settings_router import router as bot_settings_router
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pathlib import Path
 from fastapi.staticfiles import StaticFiles
@@ -33,6 +34,7 @@ app = FastAPI()
 # Підключаємо роутери
 app.include_router(statistics_router)
 app.include_router(notifications_router)
+app.include_router(bot_settings_router)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
@@ -290,6 +292,18 @@ async def notifications_page(
     return templates.TemplateResponse("notifications.html", {
         "request": request,
         "user": user_profile,
+        "current_user": user
+    })
+
+
+@app.get("/bot-settings", response_class=HTMLResponse)
+async def bot_settings_page(
+    request: Request, 
+    user: User = Depends(get_admin_user)
+):
+    """Сторінка налаштувань бота"""
+    return templates.TemplateResponse("bot_settings.html", {
+        "request": request,
         "current_user": user
     })
 
