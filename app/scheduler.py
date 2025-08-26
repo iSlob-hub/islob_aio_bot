@@ -269,7 +269,7 @@ class BotScheduler:
 
     async def send_too_long_training_notification(self):
         now_utc = datetime.now(ZoneInfo("Europe/Kyiv"))
-        cutoff = now_utc - timedelta(minutes=5)  # Змінено з hours=1 на minutes=5 для тестування
+        cutoff = now_utc - timedelta(hours=1)  # Змінено з hours=1 на minutes=5 для тестування
 
         sessions = await TrainingSession.find(
             TrainingSession.completed != True,
@@ -281,7 +281,7 @@ class BotScheduler:
             try:
                 await self.bot.send_message(
                     chat_id=session.user_id,
-                    text="Тренування триває вже більше 5 хвилин, будь ласка, заверши його, якщо забув.",  # Оновлено текст
+                    text="Тренування триває вже більше 60 хвилин, будь ласка, заверши його, якщо забув.",  # Оновлено текст
                 )
                 session.training_warning_message_sent = True
                 await session.save()
@@ -390,16 +390,40 @@ class BotScheduler:
                 notification_time = notification.notification_time
                 if notification_time != current_time_str:
                     continue
+                
+                local_date = current_time.date()
+                start_local = datetime.combine(local_date, datetime.min.time(), tzinfo=zone_info)
+                end_local = start_local + timedelta(days=1)
+                start_utc = start_local.astimezone(ZoneInfo("UTC"))
+                end_utc = end_local.astimezone(ZoneInfo("UTC"))
+
+                existing_session = await TrainingSession.find_one(
+                    {
+                        "user_id": str(notification.user_id),
+                        "$or": [
+                            {"training_started_at": {"$gte": start_utc, "$lt": end_utc}},
+                            {"training_ended_at": {"$gte": start_utc, "$lt": end_utc}},
+                        ],
+                    }
+                )
+
+                if existing_session is not None:
+                    print(f"Skipping gym reminder for {notification.user_id}: session exists today")
+                    continue
             
                 if not notification.system_data:
                     notification.system_data = {}
                     await notification.save()
                     
                 last_sent_date = notification.system_data.get("last_sent_date")
-                if (
-                    last_sent_date
-                    and last_sent_date.date() == current_time.date()
-                ):
+                if last_sent_date is not None:
+                    try:
+                        last_date = last_sent_date.date()
+                    except AttributeError:
+                        last_date = last_sent_date
+                else:
+                    last_date = None
+                if last_date == current_time.date():
                     continue
                 
                 # Відправляємо нагадування
