@@ -432,9 +432,7 @@ class BotScheduler:
                     text="🏋️‍♂️ Час для тренування! Не забудь тренувальну сесію."
                 )
                 
-                # Позначаємо як відправлено
-                notification.system_data["last_sent_date"] = current_time.date()
-                await notification.save()
+                await notification.delete()
                 
                 print(f"✅ Sent gym reminder to {notification.user_id} at {notification_time}")
 
