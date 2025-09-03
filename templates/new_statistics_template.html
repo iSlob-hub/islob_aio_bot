@@ -170,7 +170,7 @@
         
         // Set default Chart.js options
         Chart.defaults.font.family = "'Arial', sans-serif";
-        Chart.defaults.font.size = 16;
+        Chart.defaults.font.size = 24;
         Chart.defaults.font.weight = 'bold';
         Chart.defaults.color = '#000000';
         
@@ -183,7 +183,7 @@
                 tooltip: {
                     backgroundColor: 'rgba(0,0,0,0.8)',
                     titleFont: { size: 18, weight: 'bold' },
-                    bodyFont: { size: 16, weight: 'bold' },
+                    bodyFont: { size: 24, weight: 'bold' },
                     padding: 10,
                     cornerRadius: 5,
                     displayColors: false
@@ -201,7 +201,7 @@
                         drawBorder: false
                     },
                     ticks: {
-                        font: { size: 12, weight: 'bold' },
+                        font: { size: 18, weight: 'bold' },
                         color: '#555',
                         maxRotation: 0,
                         padding: 5
@@ -216,7 +216,7 @@
                         drawBorder: false
                     },
                     ticks: {
-                        font: { size: 14, weight: 'bold' },
+                        font: { size: 24, weight: 'bold' },
                         color: '#555',
                         padding: 5,
                         stepSize: 1
@@ -290,7 +290,7 @@
                     y: {
                         ...commonOptions.scales.y,
                         min: 0,
-                        max: 10.5,
+                        max: 10,
                         ticks: {
                             ...commonOptions.scales.y.ticks,
                             stepSize: 2
@@ -332,7 +332,7 @@
                     y: {
                         ...commonOptions.scales.y,
                         min: 0,
-                        max: 10.5,
+                        max: 10,
                         ticks: {
                             ...commonOptions.scales.y.ticks,
                             stepSize: 2
@@ -406,7 +406,7 @@
                     y: {
                         ...commonOptions.scales.y,
                         min: 0,
-                        max: 10.5,
+                        max: 10,
                         ticks: {
                             ...commonOptions.scales.y.ticks,
                             stepSize: 2
@@ -423,7 +423,13 @@
         weightGradient.addColorStop(0, 'rgba(0, 191, 255, 0.6)');
         weightGradient.addColorStop(0.5, 'rgba(0, 191, 255, 0.3)');
         weightGradient.addColorStop(1, 'rgba(0, 191, 255, 0.0)');
-        
+        const weights = sampleData.weight.values;
+        const minWeight = Math.min(...weights);
+        const maxWeight = Math.max(...weights);
+
+
+        const range = maxWeight - minWeight;
+        const padding = range * 0.4; // 20% запасу
         const weightConfig = {
             type: 'line',
             data: {
@@ -455,19 +461,22 @@
                             drawBorder: false
                         },
                         ticks: {
-                            font: { size: 14, weight: 'bold' },
+                            font: { size: 18, weight: 'bold' },
                             color: '#555',
                             maxRotation: 0,
                             padding: 5
-                        }
+                        },
                     },
                     y: {
+                        min: minWeight - padding,
+                        max: maxWeight + padding,
                         title: {
                             display: false,
                             text: 'Вага (кг)'
                         },
+                        
                         ticks: {
-                            font: { size: 14, weight: 'bold' },
+                            font: { size: 18, weight: 'bold' },
                             color: '#555',
                             padding: 5
                         }
