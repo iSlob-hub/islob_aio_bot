@@ -450,9 +450,39 @@ async def handle_do_you_have_soreness(
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text=str(i), callback_data=f"stress_level_{i}")
-                    for i in range(1, 11)
-                ]
+                    InlineKeyboardButton(
+                        text="1", callback_data="stress_level_1"
+                    ),
+                    InlineKeyboardButton(
+                        text="2", callback_data="stress_level_2"
+                    ),
+                    InlineKeyboardButton(
+                        text="3", callback_data="stress_level_3"
+                    ),
+                    InlineKeyboardButton(
+                        text="4", callback_data="stress_level_4"
+                    ),
+                    InlineKeyboardButton(
+                        text="5", callback_data="stress_level_5"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="6", callback_data="stress_level_6"
+                    ),
+                    InlineKeyboardButton(
+                        text="7", callback_data="stress_level_7"
+                    ),
+                    InlineKeyboardButton(
+                        text="8", callback_data="stress_level_8"
+                    ),
+                    InlineKeyboardButton(
+                        text="9", callback_data="stress_level_9"
+                    ),
+                    InlineKeyboardButton(
+                        text="10", callback_data="stress_level_10"
+                    ),
+                ],
             ]
         ),
     )
