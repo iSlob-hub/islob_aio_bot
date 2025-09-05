@@ -64,7 +64,7 @@ class BotScheduler:
             self.scheduler.add_job(
                 self.send_morning_notifications,
                 "interval",
-                seconds=5,
+                minutes=1,
                 id="morning_notifications",
                 replace_existing=True,
             )
@@ -72,15 +72,16 @@ class BotScheduler:
             self.scheduler.add_job(
                 self.send_after_training_notification,
                 "interval",
-                seconds=5,  # Змінено для тестування з cron на interval
+                minutes=1,
                 id="after_training_notification",
                 replace_existing=True,
             )
 
             self.scheduler.add_job(
                 self.send_too_long_training_notification,
-                "interval",
-                seconds=5,  # Змінено з 10 на 5 секунд для швидшого тестування
+                "cron",
+                minute="0",
+                hour="15",
                 id="too_long_training_notification",
                 replace_existing=True,
             )
@@ -88,7 +89,7 @@ class BotScheduler:
             self.scheduler.add_job(
                 self.send_custom_notifications,
                 "interval",
-                seconds=10,
+                minutes=1,
                 id="custom_notifications",
                 replace_existing=True,
             )
@@ -96,7 +97,7 @@ class BotScheduler:
             self.scheduler.add_job(
                 self.send_gym_reminder_notifications,
                 "interval",
-                seconds=10,  # Перевіряємо кожні 10 секунд
+                minutes=1,  # Перевіряємо кожну хвилину
                 id="gym_reminder_notifications",
                 replace_existing=True,
             )
@@ -193,16 +194,13 @@ class BotScheduler:
                 logger.debug(f"Failed to send morning quiz to {recipient}: {e}")
 
     async def send_after_training_notification(self):
-        """Send after training notification at 15:00 for completed training sessions"""
         try:
-            # Перевіряємо чи зараз поточний час для тестування
             current_time = datetime.now(tz=zone_info)
             current_time_str = current_time.strftime("%H:%M")
             print(f"DEBUG: Checking after-training notifications at {current_time_str}")
             if current_time_str != "15:00":
                 return
                 
-            # Поточна дата
             current_date = current_time.date()
             
             notifications = await Notification.find(
