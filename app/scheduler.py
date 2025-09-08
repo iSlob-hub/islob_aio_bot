@@ -71,17 +71,17 @@ class BotScheduler:
 
             self.scheduler.add_job(
                 self.send_after_training_notification,
-                "interval",
-                minutes=1,
+                "cron",
+                minute="0",
+                hour="15",
                 id="after_training_notification",
                 replace_existing=True,
             )
 
             self.scheduler.add_job(
                 self.send_too_long_training_notification,
-                "cron",
-                minute="0",
-                hour="15",
+                "interval",
+                minutes=1,
                 id="too_long_training_notification",
                 replace_existing=True,
             )
