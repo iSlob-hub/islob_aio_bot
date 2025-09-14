@@ -97,7 +97,7 @@ class BotScheduler:
             self.scheduler.add_job(
                 self.send_gym_reminder_notifications,
                 "interval",
-                minutes=1,  # Перевіряємо кожну хвилину
+                minutes=1,
                 id="gym_reminder_notifications",
                 replace_existing=True,
             )

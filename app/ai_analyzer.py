@@ -1,8 +1,7 @@
 """
-Інтеграція з OpenAI Assistant для аналізу статистики
+Інтеграція з OpenAI Chat Completions API для аналізу статистики
 """
 
-import asyncio
 from datetime import datetime
 from typing import Optional, Dict, Any
 import logging
@@ -21,23 +20,36 @@ except ImportError:
 
 # Конфігурація - додайте ці змінні у ваш .env файл
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-OPENAI_ASSISTANT_ID = "asst_kofjAVUVCR3kr7qV0NzJpfPS"  # Замініть на ID вашого асистента
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")  # Модель за замовчуванням
 
 
 class StatisticsAnalyzer:
-    """Клас для аналізу статистики через OpenAI Assistant"""
+    """Клас для аналізу статистики через OpenAI Chat Completions API"""
     
-    def __init__(self, api_key: str = None, assistant_id: str = None):
+    def __init__(self, api_key: str = None, model: str = None):
         if not OPENAI_AVAILABLE:
             raise ImportError("OpenAI пакет не встановлено. Встановіть: pip install openai")
             
         self.api_key = api_key or OPENAI_API_KEY
-        self.assistant_id = assistant_id or OPENAI_ASSISTANT_ID
+        self.model = model or OPENAI_MODEL
         
-        if not self.api_key or not self.assistant_id:
-            raise ValueError("Необхідно вказати OPENAI_API_KEY та OPENAI_ASSISTANT_ID")
+        if not self.api_key:
+            raise ValueError("Необхідно вказати OPENAI_API_KEY")
             
         self.client = AsyncOpenAI(api_key=self.api_key)
+        
+        # Завантажуємо інструкцію для асистента
+        self.system_instruction = self._load_system_instruction()
+    
+    def _load_system_instruction(self) -> str:
+        """Завантаження системної інструкції з файлу"""
+        try:
+            template_path = os.path.join(os.path.dirname(__file__), '..', 'assistant_template.txt')
+            with open(template_path, 'r', encoding='utf-8') as f:
+                return f.read().strip()
+        except Exception as e:
+            logger.error(f"Помилка завантаження системної інструкції: {e}")
+            return "Ти - AI-асистент для аналізу фітнес-статистики. Відповідай коротко та структуровано."
     
     def format_statistics_for_analysis(self, stats_data: Dict[str, Any]) -> str:
         """Форматування статистики для передачі асистенту"""
@@ -123,62 +135,37 @@ class StatisticsAnalyzer:
         return formatted_text
     
     async def get_analysis(self, stats_data: Dict[str, Any]) -> Optional[str]:
-        """Отримання аналізу від OpenAI Assistant"""
+        """Отримання аналізу від OpenAI Chat Completions API"""
         
         try:
             # Форматуємо дані для аналізу
             formatted_stats = self.format_statistics_for_analysis(stats_data)
             
-            logger.info(f"Відправляємо статистику на аналіз до Assistant {self.assistant_id}")
+            logger.info(f"Відправляємо статистику на аналіз до OpenAI Chat Completions API з моделлю {self.model}")
             
-            # Створюємо thread
-            thread = await self.client.beta.threads.create()
-            
-            # Додаємо повідомлення з даними
-            await self.client.beta.threads.messages.create(
-                thread_id=thread.id,
-                role="user",
-                content=formatted_stats
+            # Створюємо запит до Chat Completions API
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self.system_instruction},
+                    {"role": "user", "content": formatted_stats}
+                ],
+                temperature=0.4
             )
             
-            # Запускаємо асистента
-            run = await self.client.beta.threads.runs.create(
-                thread_id=thread.id,
-                assistant_id=self.assistant_id
-            )
-            
-            # Чекаємо завершення
-            while run.status in ['queued', 'in_progress', 'cancelling']:
-                await asyncio.sleep(2)
-                run = await self.client.beta.threads.runs.retrieve(
-                    thread_id=thread.id,
-                    run_id=run.id
-                )
-            
-            if run.status == 'completed':
-                # Отримуємо відповідь
-                messages = await self.client.beta.threads.messages.list(
-                    thread_id=thread.id
-                )
-                
-                # Знаходимо останнє повідомлення від асистента
-                for message in messages.data:
-                    if message.role == "assistant":
-                        analysis_text = ""
-                        for content in message.content:
-                            if content.type == "text":
-                                analysis_text += content.text.value
-                        
-                        logger.info("Аналіз успішно отримано від OpenAI Assistant")
-                        return analysis_text
-                        
+            # Отримуємо відповідь
+            if response.choices and len(response.choices) > 0:
+                analysis_text = response.choices[0].message.content
+                if analysis_text:
+                    logger.info("Аналіз успішно отримано від OpenAI Chat Completions API")
+                    return analysis_text.strip()
+                else:
+                    logger.warning("Відповідь від Chat Completions API порожня")
             else:
-                logger.error(f"Помилка виконання Assistant run: {run.status}")
-                if hasattr(run, 'last_error'):
-                    logger.error(f"Деталі помилки: {run.last_error}")
+                logger.warning("Немає choices у відповіді від Chat Completions API")
                 
         except Exception as e:
-            logger.error(f"Помилка при отриманні аналізу від OpenAI Assistant: {e}")
+            logger.error(f"Помилка при отриманні аналізу від OpenAI Chat Completions API: {e}")
             
         return None
     
@@ -204,6 +191,9 @@ class StatisticsAnalyzer:
             analysis = await self.get_analysis(stats_dict)
             
             if analysis:
+                # Очищаємо та валідуємо HTML
+                analysis = self._clean_html(analysis)
+                
                 # Зберігаємо аналіз в базі даних
                 user_statistics.ai_analysis = analysis
                 user_statistics.ai_analysis_generated_at = datetime.now()
@@ -212,9 +202,68 @@ class StatisticsAnalyzer:
                 logger.info(f"AI аналіз збережено для користувача {user_statistics.user_id}")
                 return True
             else:
-                logger.warning("Не вдалося отримати аналіз від OpenAI Assistant")
+                logger.warning("Не вдалося отримати аналіз від OpenAI Chat Completions API")
                 return False
                 
         except Exception as e:
             logger.error(f"Помилка при аналізі статистики: {e}")
             return False
+    
+    def _clean_html(self, text: str) -> str:
+        """Очищення та валідація HTML для Telegram"""
+        import re
+        
+        # Видаляємо заборонені теги
+        text = re.sub(r'<br[^>]*>', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'<h[1-6][^>]*>', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'</h[1-6]>', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'```html', '', text)
+        text = re.sub(r'```', '', text)
+        text = re.sub(r'---', '', text)
+        
+        # Перевіряємо парність тегів
+        open_tags = []
+        clean_text = ""
+        i = 0
+        
+        while i < len(text):
+            if text[i] == '<':
+                # Знаходимо кінець тегу
+                tag_end = text.find('>', i)
+                if tag_end == -1:
+                    clean_text += text[i]
+                    i += 1
+                    continue
+                    
+                tag = text[i:tag_end + 1]
+                
+                # Перевіряємо чи це відкриваючий тег
+                if not tag.startswith('</') and tag not in ['<b>', '<i>', '<blockquote>']:
+                    # Пропускаємо заборонений тег
+                    i = tag_end + 1
+                    continue
+                elif tag.startswith('</'):
+                    # Закриваючий тег
+                    close_tag = tag[2:-1]  # Видаляємо </ і >
+                    if open_tags and open_tags[-1] == close_tag:
+                        open_tags.pop()
+                        clean_text += tag
+                    # Інакше пропускаємо незбалансований закриваючий тег
+                else:
+                    # Відкриваючий тег
+                    tag_name = tag[1:-1]
+                    open_tags.append(tag_name)
+                    clean_text += tag
+                    
+                i = tag_end + 1
+            else:
+                clean_text += text[i]
+                i += 1
+        
+        # Закриваємо всі незакриті теги
+        while open_tags:
+            tag = open_tags.pop()
+            if tag in ['b', 'i', 'blockquote']:
+                clean_text += f'</{tag}>'
+        
+        return clean_text

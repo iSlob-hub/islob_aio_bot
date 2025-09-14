@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
     # OpenAI settings for AI Analysis
     OPENAI_API_KEY: Optional[str] = None
-    OPENAI_ASSISTANT_ID: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4.1-mini"
 
     # Generate MongoDB connection string
     @property

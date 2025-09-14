@@ -88,6 +88,7 @@ class StatisticsSender:
             # Формуємо повідомлення
             caption = f"📊 <b>Ваша тижнева статистика за попередній тиждень</b>\n\n" \
                       f"Період: {stats.period_start.strftime('%d.%m.%Y')} - {stats.period_end.strftime('%d.%m.%Y')}"
+            
                 
             # Відправляємо зображення
             await self.bot.send_photo(
@@ -99,7 +100,7 @@ class StatisticsSender:
             
             # Якщо є AI-аналіз, відправляємо його окремим повідомленням
             if stats.ai_analysis:
-                analysis_message = f"🤖 <b>Аналіз вашої статистики</b>\n\n{stats.ai_analysis}"
+                analysis_message = f"{stats.ai_analysis}"
                 
                 # Розбиваємо на частини, якщо повідомлення занадто довге
                 if len(analysis_message) > 4000:
@@ -180,6 +181,7 @@ class StatisticsSender:
             # Формуємо повідомлення
             caption = f"📈 <b>Ваша місячна статистика за попередній місяць</b>\n\n" \
                       f"Період: {stats.period_start.strftime('%d.%m.%Y')} - {stats.period_end.strftime('%d.%m.%Y')}"
+        
                 
             # Відправляємо зображення
             await self.bot.send_photo(
@@ -191,7 +193,7 @@ class StatisticsSender:
             
             # Якщо є AI-аналіз, відправляємо його окремим повідомленням
             if stats.ai_analysis:
-                analysis_message = f"🤖 **Аналіз вашої місячної статистики**\n\n{stats.ai_analysis}"
+                analysis_message = f"{stats.ai_analysis}"
                 
                 # Розбиваємо на частини, якщо повідомлення занадто довге
                 if len(analysis_message) > 4000:
@@ -290,6 +292,59 @@ class StatisticsSender:
             results["errors"].append(f"Загальна помилка: {str(e)}")
             logger.error(f"Помилка при відправці статистики користувачам: {e}")
             return results
+
+    def _clean_html_for_telegram(self, html_text: str) -> str:
+        """
+        Очищає HTML текст для сумісності з Telegram HTML парсером.
+        Видаляє або виправляє некоректні HTML теги, які можуть спричинити помилки парсингу.
+        """
+        import re
+        from html.parser import HTMLParser
+
+        if not html_text:
+            return html_text
+
+        # Залишаємо тільки підтримувані Telegram теги і перевіряємо їх коректність
+        supported_tags = ['b', 'i', 'u', 's', 'code', 'pre', 'a']
+
+        # Спочатку перевіримо на незакриті теги
+        class TagChecker(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.stack = []
+                self.unclosed_tags = []
+
+            def handle_starttag(self, tag, attrs):
+                if tag in supported_tags:
+                    self.stack.append(tag)
+
+            def handle_endtag(self, tag):
+                if tag in supported_tags:
+                    if self.stack and self.stack[-1] == tag:
+                        self.stack.pop()
+                    else:
+                        # Незакритий тег - запам'ятовуємо для виправлення
+                        self.unclosed_tags.append(tag)
+
+            def get_unclosed_tags(self):
+                return self.stack
+
+        # Перевіряємо структуру тегів
+        checker = TagChecker()
+        checker.feed(html_text)
+
+        # Виправляємо незакриті теги, додаючи закриваючі в кінці
+        for tag in reversed(checker.get_unclosed_tags()):
+            html_text += f'</{tag}>'
+
+        # Очищаємо зайві пробіли та нові рядки
+        html_text = re.sub(r'\s+', ' ', html_text).strip()
+
+        # Обмежуємо довжину повідомлення (Telegram має ліміт 4096 символів)
+        if len(html_text) > 4000:
+            html_text = html_text[:4000] + "..."
+
+        return html_text
 
 
 # Функції для інтеграції з планувальником

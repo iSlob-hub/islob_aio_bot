@@ -283,10 +283,10 @@ async def get_ai_config(admin_user: User = Depends(get_admin_user)):
     
     return {
         "has_api_key": bool(settings.OPENAI_API_KEY),
-        "has_assistant_id": bool(settings.OPENAI_ASSISTANT_ID),
-        # Більше не відправляємо ключі і ID на фронтенд
+        "has_model": bool(settings.OPENAI_MODEL),
+        # Більше не відправляємо ключі на фронтенд
         "api_key": None,
-        "assistant_id": None
+        "model": settings.OPENAI_MODEL
     }
 
 
