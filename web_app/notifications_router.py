@@ -39,12 +39,20 @@ class NotificationResponse(BaseModel):
     is_active: bool
     created_at: datetime
     cron_human_readable: Optional[str] = None
+    user_info: Optional[dict] = None
 
 
 class CreateNotificationRequest(BaseModel):
     user_id: str
     notification_text: str
     notification_type: str
+    notification_time: str
+    custom_notification_cron: Optional[str] = None
+    custom_notification_execute_once: Optional[bool] = False
+    
+    
+class UpdateNotificationRequest(BaseModel):
+    notification_text: str
     notification_time: str
     custom_notification_cron: Optional[str] = None
     custom_notification_execute_once: Optional[bool] = False
@@ -97,22 +105,38 @@ async def get_user_notifications(
     notification_type: Optional[str] = Query(None),
     admin_user: User = Depends(get_admin_user)
 ) -> List[NotificationResponse]:
-    """Отримати всі сповіщення користувача"""
+    """Отримати всі сповіщення користувача або всіх користувачів"""
     try:
-        # Перевіряємо чи існує користувач
-        user = await User.find_one({"telegram_id": user_id})
-        if not user:
-            raise HTTPException(status_code=404, detail="Користувача не знайдено")
+        # Спеціальна обробка для "all" - повернути сповіщення всіх користувачів
+        if user_id.lower() == "all":
+            # Фільтр для запиту - тільки по типу сповіщення, якщо вказано
+            query_filter = {}
+            if notification_type:
+                query_filter["notification_type"] = notification_type
+                
+            # Отримуємо дані користувачів для додавання імен
+            users = {user.telegram_id: user.full_name for user in await User.find().to_list()}
+        else:
+            # Перевіряємо чи існує користувач
+            user = await User.find_one({"telegram_id": user_id})
+            if not user:
+                raise HTTPException(status_code=404, detail="Користувача не знайдено")
+            
+            # Фільтр для запиту
+            query_filter = {"user_id": user_id}
+            if notification_type:
+                query_filter["notification_type"] = notification_type
         
-        # Фільтр для запиту
-        query_filter = {"user_id": user_id}
-        if notification_type:
-            query_filter["notification_type"] = notification_type
-        
+        # Отримуємо сповіщення з сортуванням
         notifications = await Notification.find(query_filter).sort([("created_at", -1)]).to_list()
         
         result = []
         for notification in notifications:
+            # Додаємо інформацію про користувача якщо запит був для всіх користувачів
+            user_info = None
+            if user_id.lower() == "all" and notification.user_id in users:
+                user_info = {"name": users[notification.user_id]}
+                
             notification_data = NotificationResponse(
                 id=str(notification.id),
                 user_id=notification.user_id,
@@ -125,7 +149,8 @@ async def get_user_notifications(
                 system_data=notification.system_data,
                 is_active=notification.is_active,
                 created_at=notification.created_at,
-                cron_human_readable=cron_to_human_readable(notification.custom_notification_cron) if notification.custom_notification_cron else None
+                cron_human_readable=cron_to_human_readable(notification.custom_notification_cron) if notification.custom_notification_cron else None,
+                user_info=user_info  # Додаємо інформацію про користувача
             )
             result.append(notification_data)
         
@@ -270,6 +295,78 @@ async def get_notification_types(admin_user: User = Depends(get_admin_user)):
             }
         ]
     }
+
+
+@router.put("/{notification_id}")
+async def update_notification(
+    notification_id: str,
+    request: UpdateNotificationRequest,
+    admin_user: User = Depends(get_admin_user)
+) -> NotificationResponse:
+    """Оновити існуюче сповіщення"""
+    try:
+        notification = await Notification.get(notification_id)
+        if not notification:
+            raise HTTPException(status_code=404, detail="Сповіщення не знайдено")
+        
+        # Валідація часу
+        if not re.match(r"^\d{2}:\d{2}$", request.notification_time):
+            raise HTTPException(status_code=400, detail="Невірний формат часу. Використовуйте HH:MM")
+        
+        # Валідація cron виразу якщо він вказаний
+        if request.custom_notification_cron:
+            try:
+                croniter(request.custom_notification_cron)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Невірний cron вираз")
+        
+        # Оновлення полів сповіщення
+        notification.notification_time = request.notification_time
+        notification.notification_text = request.notification_text
+        
+        # Оновлення додаткових полів для користувацьких сповіщень
+        if notification.notification_type == NotificationType.CUSTOM_NOTIFICATION:
+            notification.custom_notification_text = request.notification_text
+            notification.custom_notification_cron = request.custom_notification_cron
+            notification.custom_notification_execute_once = request.custom_notification_execute_once
+        
+        await notification.save()
+        
+        return NotificationResponse(
+            id=str(notification.id),
+            user_id=notification.user_id,
+            notification_time=notification.notification_time,
+            notification_text=notification.notification_text,
+            notification_type=notification.notification_type.value,
+            custom_notification_text=notification.custom_notification_text,
+            custom_notification_cron=notification.custom_notification_cron,
+            custom_notification_execute_once=notification.custom_notification_execute_once,
+            system_data=notification.system_data,
+            is_active=notification.is_active,
+            created_at=notification.created_at,
+            cron_human_readable=cron_to_human_readable(notification.custom_notification_cron) if notification.custom_notification_cron else None
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/users")
+async def get_all_users(admin_user: User = Depends(get_admin_user)):
+    """Отримати список всіх користувачів для адміністративного інтерфейсу"""
+    try:
+        users = await User.find().sort([("full_name", 1)]).to_list()
+        
+        return [{
+            "telegram_id": user.telegram_id,
+            "full_name": user.full_name,
+            "telegram_username": user.telegram_username,
+            "is_active": user.is_active,
+            "created_at": user.created_at
+        } for user in users]
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/cron-presets")

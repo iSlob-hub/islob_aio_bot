@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     MONGODB_PORT: int = 27017
     MONGODB_USER: Optional[str] = None
     MONGODB_PASSWORD: Optional[str] = None
+    MONGODB_URL: Optional[str] = None
 
     ENVIRONMENT: Optional[str] = None
 
@@ -34,6 +35,8 @@ class Settings(BaseSettings):
     # OpenAI settings for AI Analysis
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4.1-mini"
+
+    ADMIN_CHAT_ID: Optional[str] = None
 
     # Generate MongoDB connection string
     @property

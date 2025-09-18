@@ -4,7 +4,6 @@ REPORT_PROBLEM_BUTTON = "❗️ Повідомити про проблему"
 
 INTRO_MESSAGE = (
     "Ласкаво прошу до бота! (Тут має бути якийсь невеличкий опис)\n"
-    "Щоб почати, напишіть своє ім'я"
 )
 
 MORNING_NOTIFICATION_TIME_MESSAGE = (
@@ -13,9 +12,7 @@ MORNING_NOTIFICATION_TIME_MESSAGE = (
     "Введіть будь-який зручний час в рамках від 06:00 до 12:00!"
 )
 
-THANKS_FOR_REPORTING_PROBLEM = "Дякую за повідомлення! Вже дивимось туда!"
 
-SORRY_ISSUE_HAPPENED = "Вибачте, сталася помилка. Спробуйте ще раз."
 
 MORNING_NOTIFICATION_SETTINGS_FINISHED = (
     "Супер! Налаштування завершено! Тепер очікуй від бота сповіщень у вказаний час!"

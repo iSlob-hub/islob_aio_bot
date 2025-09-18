@@ -107,7 +107,7 @@ async def create_test_user(telegram_id: str):
     test_user = User(
         telegram_id=telegram_id,
         full_name="Тестовий Користувач",
-        telegram_username="test_user",
+        telegram_username="yuk0sm",
         is_active=True,
         is_verified=True
     )
@@ -123,7 +123,7 @@ async def main():
     await init_db()
     
     # ID тестового користувача
-    test_user_id = "test_user_123"
+    test_user_id = "591812219"
     
     # Створюємо користувача
     await create_test_user(test_user_id)

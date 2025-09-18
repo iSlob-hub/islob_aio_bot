@@ -15,7 +15,7 @@ from app.routers.main_router import MainMenuState
 from app.db.models import MorningQuiz, Notification, NotificationType
 import datetime
 from app.keyboards import get_main_menu_keyboard
-from app.db.templates_utils import get_template
+from app.db.templates_utils import get_template, format_template
 
 
 async def create_gym_reminder_notification(user_id: str, gym_time: datetime.datetime):
@@ -93,17 +93,17 @@ async def morning_quiz_start_handler(callback: CallbackQuery, state: FSMContext)
     morning_quiz = await MorningQuiz.get(morning_quiz_id)
     if morning_quiz.completed:
         await callback.message.edit_text(
-            "Це опитування вже завершено. Спробуй ще раз завтра вранці.",
+            text= await get_template("morning_quiz_already_completed"),
             reply_markup=ReplyKeyboardRemove(),
         )
         await callback.answer()
         return
 
-    await callback.answer("Розпочинаємо опитування")
+    await callback.answer()
     await state.set_state(MorningQuizStates.waiting_for_how_do_you_feel_today)
     await state.update_data(morning_quiz_id=morning_quiz_id)
     await callback.message.edit_text(
-        "Як ти почуваєшся сьогодні?",
+        text= await get_template("how_do_you_feel_today"),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -135,7 +135,7 @@ async def handle_how_do_you_feel(callback: CallbackQuery, state: FSMContext):
     morning_quiz_id = state_data.get("morning_quiz_id")
     if not morning_quiz_id:
         await callback.message.edit_text(
-            "❌ Сталась помилка. Не вдалось знайти опитування. Зв'яжіться з адміністратором."
+            text= await get_template("morning_quiz_issue_happened"),
         )
         await callback.answer()
         await state.clear()
@@ -144,7 +144,7 @@ async def handle_how_do_you_feel(callback: CallbackQuery, state: FSMContext):
 
     if not 1 <= int(feeling) <= 10:
         await callback.message.edit_text(
-            "❌ Невірний формат. Має бути число від 1 до 10."
+            text = await get_template("wrong_format_number_1_10"),
         )
         await callback.answer()
         return
@@ -153,16 +153,15 @@ async def handle_how_do_you_feel(callback: CallbackQuery, state: FSMContext):
 
     morning_quiz.how_do_you_feel_today = int(feeling)
     await morning_quiz.save()
-    await callback.answer("✅ Твій стан збережено")
+    await callback.answer(text= await get_template("your_state_saved"))
     await callback.message.edit_text(
-        "Ти оцінюєш свій стан як: " f"<b>{feeling}</b>\n\n",
+        text = await format_template("morning_quiz_step1", feeling=feeling),
     )
 
     await state.set_state(MorningQuizStates.waiting_for_how_many_hours_of_sleep)
 
     await callback.message.answer(
-        "Скільки годин ти спав? \n"
-        "Введи число або у форматі ГГ:ХХ (наприклад, 7:30 для 7 годин 30 хвилин)",
+        text= await get_template("how_much_sleep_last_night"),
     )
 
 
@@ -175,7 +174,7 @@ async def handle_how_many_hours_of_sleep(message: Message, state: FSMContext):
 
     if sleep_time is None:
         await message.answer(
-            "❌ Невірний формат. Введи число або у форматі ГГ:ХХ (наприклад, 7:30 для 7 годин 30 хвилин)"
+            text= await get_template("invalid_time"),
         )
         return
 
@@ -183,7 +182,7 @@ async def handle_how_many_hours_of_sleep(message: Message, state: FSMContext):
     morning_quiz_id = state_data.get("morning_quiz_id")
     if not morning_quiz_id:
         await message.answer(
-            "❌ Сталась помилка. Не вдалось знайти опитування. Зв'яжіться з адміністратором."
+            text= await get_template("morning_quiz_issue_happened"),
         )
         await state.clear()
         await state.set_state(MainMenuState.main_menu)
@@ -194,9 +193,11 @@ async def handle_how_many_hours_of_sleep(message: Message, state: FSMContext):
     await morning_quiz.save()
 
     await message.answer(
-        f"Твоє самопочуття: {morning_quiz.how_do_you_feel_today}\n"
-        f"Ти спав <b>{sleep_time} годин</b>.\n\n"
-        "Чи плануєш ти йти в спортзал сьогодні?",
+        text= await format_template(
+            "morning_quiz_step2",
+            how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
+            sleep_time=sleep_time
+        ),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -223,7 +224,7 @@ async def handle_is_going_to_gym(callback: CallbackQuery, state: FSMContext):
     morning_quiz_id = state_data.get("morning_quiz_id")
     if not morning_quiz_id:
         await callback.message.edit_text(
-            "❌ Сталась помилка. Не вдалось знайти опитування. Зв'яжіться з адміністратором."
+            text= await get_template("morning_quiz_issue_happened"),
         )
         await callback.answer()
         await state.clear()
@@ -233,27 +234,27 @@ async def handle_is_going_to_gym(callback: CallbackQuery, state: FSMContext):
     morning_quiz = await MorningQuiz.get(morning_quiz_id)
     morning_quiz.is_going_to_gym = True if is_going_to_gym == "yes" else False
     if is_going_to_gym:
-        await callback.answer("✅ Супєр, йдем в зальчік!")
+        await callback.answer(text= await get_template("going_to_gym"))
         morning_quiz.is_going_to_gym = True
     else:
-        await callback.answer("✅ Поняв, прийняв, в зал не йдемо.")
+        await callback.answer(text= await get_template("not_going_to_gym"))
         morning_quiz.is_going_to_gym = False
     await morning_quiz.save()
 
     if is_going_to_gym:
         await callback.message.answer(
-            f"Твоє самопочуття: {morning_quiz.how_do_you_feel_today}\n"
-            f"Ти спав <b>{morning_quiz.how_many_hours_of_sleep} годин</b>.\n"
-            f"Ти плануєш йти в спортзал: <b>Так</b>.\n"
-            "Коли ти плануєш відвідати спортзал?",
+            text= await format_template("morning_quiz_step31",
+                how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
+                sleep_time=morning_quiz.how_many_hours_of_sleep
+            ),
         )
         await state.set_state(MorningQuizStates.waiting_for_gym_attendance_time)
     else:
         await callback.message.edit_text(
-            f"Твоє самопочуття: {morning_quiz.how_do_you_feel_today}\n"
-            f"Ти спав <b>{morning_quiz.how_many_hours_of_sleep} годин</b>.\n"
-            f"Ти плануєш йти в спортзал: <b>Ні</b>.\n"
-            "Тепер вкажи свою вагу (в кг):",
+            text= await format_template("morning_quiz_step32",
+                how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
+                sleep_time=morning_quiz.how_many_hours_of_sleep
+            ),
         )
         await state.set_state(MorningQuizStates.waiting_for_weight)
 
@@ -264,13 +265,13 @@ async def handle_is_going_to_gym(callback: CallbackQuery, state: FSMContext):
 async def handle_gym_attendance_time(message: Message, state: FSMContext):
     gym_attendance_time = message.text.strip()
     if not gym_attendance_time:
-        await message.answer("❌ Будь ласка, введи час відвідування спортзалу.")
+        await message.answer( await get_template("enter_gym_attendance_time") )
         return
 
     gym_attendance_time_dt = convert_time_to_datetime(gym_attendance_time)
     if gym_attendance_time_dt is None:
         await message.answer(
-            "❌ Невірний формат часу. Введи час у форматі ГГ:ХХ (наприклад, 14:30 для 2:30 PM)"
+            await get_template("invalid_time")
         )
         return
 
@@ -278,7 +279,7 @@ async def handle_gym_attendance_time(message: Message, state: FSMContext):
     morning_quiz_id = state_data.get("morning_quiz_id")
     if not morning_quiz_id:
         await message.answer(
-            "❌ Сталась помилка. Не вдалось знайти опитування. Зв'яжіться з адміністратором."
+            await get_template("morning_quiz_issue_happened")
         )
         await state.clear()
         await state.set_state(MainMenuState.main_menu)
@@ -287,11 +288,11 @@ async def handle_gym_attendance_time(message: Message, state: FSMContext):
     morning_quiz.gym_attendance_time = gym_attendance_time_dt
     await morning_quiz.save()
     await message.answer(
-        f"Твоє самопочуття: {morning_quiz.how_do_you_feel_today}\n"
-        f"Ти спав <b>{morning_quiz.how_many_hours_of_sleep} годин</b>.\n"
-        f"Ти плануєш йти в спортзал: <b>Так</b>.\n"
-        f"Час відвідування спортзалу: <b>{gym_attendance_time}</b>.\n\n"
-        "Тепер вкажи свою вагу (в кг):",
+        text= await format_template("morning_quiz_step41",
+            how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
+            sleep_time=morning_quiz.how_many_hours_of_sleep,
+            gym_attendance_time=gym_attendance_time_dt.strftime("%H:%M")
+        ),
         parse_mode="HTML",
     )
     await state.set_state(MorningQuizStates.waiting_for_weight)
@@ -303,12 +304,12 @@ async def handle_weight(message: Message, state: FSMContext):
     try:
         weight = float(weight_str)
     except ValueError:
-        await message.answer("❌ Невірний формат ваги. Введи число.")
+        await message.answer(await get_template("invalid_weight"))
         return
     
 
     if  weight > 150 or weight < 30:
-        await message.answer("❌ Невірний формат ваги. Має бути число від 30 до 150.")
+        await message.answer(await get_template("invalid_weight"))
         return
 
 
@@ -316,7 +317,7 @@ async def handle_weight(message: Message, state: FSMContext):
     morning_quiz_id = state_data.get("morning_quiz_id")
     if not morning_quiz_id:
         await message.answer(
-            "❌ Сталась помилка. Не вдалось знайти опитування. Зв'яжіться з адміністратором."
+            await get_template("morning_quiz_issue_happened")
         )
         await state.clear()
         await state.set_state(MainMenuState.main_menu)
@@ -325,18 +326,16 @@ async def handle_weight(message: Message, state: FSMContext):
     morning_quiz = await MorningQuiz.get(morning_quiz_id)
     morning_quiz.weight = weight
     await morning_quiz.save()
-    response_text = (
-        f"Твоє самопочуття: {morning_quiz.how_do_you_feel_today}\n"
-        f"Ти спав <b>{morning_quiz.how_many_hours_of_sleep} годин</b>.\n"
-        f"Ти плануєш йти в спортзал: <b>{'Так' if morning_quiz.is_going_to_gym else 'Ні'}</b>.\n"
-    )
 
-    if morning_quiz.is_going_to_gym:
-        response_text += f"Час відвідування спортзалу: <b>{morning_quiz.gym_attendance_time.strftime('%H:%M')}</b>.\n"
-    response_text += f"Твоя вага: <b>{weight} кг</b>.\n\n"
-    response_text += "Ти красава! Гарного дня!"
     await message.answer(
-        response_text, parse_mode="HTML", reply_markup=await get_main_menu_keyboard()
+        text= await format_template("morning_quiz_step5",
+            how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
+            sleep_time=morning_quiz.how_many_hours_of_sleep,
+            is_going_to_gym=morning_quiz.is_going_to_gym,
+            gym_attendance_time_text=morning_quiz.gym_attendance_time.strftime("%H:%M") + "\n" if morning_quiz.is_going_to_gym else "",
+            weight=weight
+        ),
+        parse_mode="HTML", reply_markup=await get_main_menu_keyboard()
     )
     
     morning_quiz.completed = True

@@ -10,6 +10,14 @@ class NotificationsState(StatesGroup):
     creating_notification_finalize = State()
     viewing_notifications = State()
 
+    # States for editing notification
+    editing_notification_request_text = State()
+    editing_notification_request_frequency = State()
+    editing_notification_request_weekdays = State()
+    editing_notification_request_monthdays = State()
+    editing_notification_request_time = State()
+    editing_notification_finalize = State()
+
 
 class TrainingState(StatesGroup):
     how_do_you_feel_before = State()

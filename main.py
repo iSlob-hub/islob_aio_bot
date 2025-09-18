@@ -13,7 +13,8 @@ import logging
 import signal
 import sys
 from contextlib import asynccontextmanager
-
+import tracemalloc
+tracemalloc.start()
 # Налаштовуємо логування - вимикаємо докладні логи MongoDB
 logging.getLogger("pymongo").setLevel(logging.WARNING)
 logging.getLogger("pymongo.command").setLevel(logging.WARNING)

@@ -5,6 +5,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
 )
 import app.text_constants as tc
+from app.utils.text_templates import get_template, sync_get_template
 
 
 async def get_main_menu_keyboard() -> ReplyKeyboardMarkup:

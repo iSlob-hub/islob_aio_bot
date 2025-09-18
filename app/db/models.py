@@ -5,12 +5,18 @@ from pydantic import BaseModel, Field
 from enum import Enum
 
 
+class TrainingGoal(str, Enum):
+    LOSE_WEIGHT = "Зниженя ваги"
+    BUILD_MUSCLE = "Набір м'язової маси"
+    MAINTAIN_FITNESS = "Підтримка форми"
+
 class User(Document):
     telegram_id: str
     full_name: str
     telegram_username: str
     is_active: bool = True
     is_verified: bool = False
+    training_goal: TrainingGoal = TrainingGoal.MAINTAIN_FITNESS
     created_at: datetime = Field(default_factory=datetime.now)
 
     training_file_url: Optional[str] = None

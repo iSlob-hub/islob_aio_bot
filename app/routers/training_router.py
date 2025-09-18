@@ -19,6 +19,11 @@ import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 import app.keyboards as kb
+from app.utils.text_templates import sync_get_template
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 app_root = Path(__file__).resolve().parent.parent
@@ -28,7 +33,7 @@ training_router = Router()
 
 
 @training_router.message(
-    F.text == tc.START_TRAINING_BUTTON, StateFilter(MainMenuState.training_menu)
+    F.text == sync_get_template("start_training_button"), StateFilter(MainMenuState.training_menu)
 )
 async def start_training(message: Message, state: FSMContext) -> None:
     # remove reply keyboard if it exists
@@ -82,7 +87,7 @@ async def start_training(message: Message, state: FSMContext) -> None:
 
 
 @training_router.message(
-    F.text == tc.BACK_TO_MAIN_MENU_BUTTON, StateFilter(MainMenuState.training_menu)
+    F.text == sync_get_template("back_to_main_menu_button"), StateFilter(MainMenuState.training_menu)
 )
 async def back_to_main_menu(message: Message, state: FSMContext) -> None:
     await message.answer(
@@ -320,7 +325,7 @@ async def handle_do_you_have_any_pain(
     await training_session.save()
 
     if training_session.do_you_have_any_pain:
-        admin_chat_id = "-4989990832"
+        admin_chat_id = os.getenv("ADMIN_CHAT_ID")
         await callback_query.bot.send_message(
             chat_id=admin_chat_id,
             text=(
@@ -372,6 +377,19 @@ async def handle_do_you_have_any_pain(
         
         await after_training_notification.save()
         print(f"DEBUG: Created after-training notification for user {callback_query.from_user.id} on {next_day_date}")
+
+    # Remove any existing training time notifications for user
+    training_time_notifications = await Notification.find(
+        {
+            "user_id": str(callback_query.from_user.id),
+            "notification_type": "gym_reminder_notification",
+            "is_active": True
+        }
+    ).to_list()
+    for notif in training_time_notifications:
+        notif.is_active = False
+        await notif.save()
+        print(f"Deactivated training time notification {notif.id} for user {callback_query.from_user.id}")
 
     training_session.completed = True
     await training_session.save()
@@ -436,7 +454,7 @@ async def handle_do_you_have_soreness(
     await training_session.save()
 
     if training_session.do_you_have_soreness:
-        admin_chat_id = "-4989990832"
+        admin_chat_id = os.getenv("ADMIN_CHAT_ID")
         await callback_query.bot.send_message(
             chat_id=admin_chat_id,
             text=(

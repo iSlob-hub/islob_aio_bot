@@ -2,21 +2,24 @@ from aiogram.filters import StateFilter
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram import Router
-import app.text_constants as tc
 
 from app.routers.main_router import MainMenuState
 from app.keyboards import get_main_menu_keyboard
+from dotenv import load_dotenv
+from app.utils.text_templates import get_template
+import os
+load_dotenv()
 
 
 report_problem_router = Router()
 
-REPORT_CHAT_ID = "-4989990832"
+REPORT_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
 
 
 @report_problem_router.message(StateFilter(MainMenuState.report_problem))
 async def process_report_problem(message: Message, state: FSMContext) -> None:
     await message.answer(
-        text=tc.THANKS_FOR_REPORTING_PROBLEM,
+        text=await get_template("thanks_for_reporting_problem"),
         reply_markup=await get_main_menu_keyboard(),
     )
     await state.set_state(MainMenuState.main_menu)
