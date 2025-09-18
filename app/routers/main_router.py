@@ -88,6 +88,27 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     )
 
 
+@main_router.message(Command("menu"))
+async def cmd_menu(message: Message, state: FSMContext) -> None:
+    """
+    Universal command to return to main menu from any state
+    """
+    user_telegram_id = message.from_user.id
+    user = await User.find_one(User.telegram_id == str(user_telegram_id))
+    
+    # Only verified users can use this command
+    if not user or not user.is_verified:
+        # If user is not verified, treat it like /start
+        return await cmd_start(message, state)
+    
+    # Return to main menu
+    await state.set_state(MainMenuState.main_menu)
+    await message.answer(
+        text=await get_template("menu_command"),
+        reply_markup=await get_main_menu_keyboard(),
+    )
+
+
 @main_router.message(StateFilter(InitialConversationState.waiting_for_name))
 async def process_name(message: Message, state: FSMContext) -> None:
     user_name = message.text
