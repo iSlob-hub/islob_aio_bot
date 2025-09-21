@@ -8,10 +8,6 @@ async def get_template(template_key: str, default_text: str = None) -> str:
     Get text template from MongoDB or return the default text if not found.
     Templates are cached for better performance.
     """
-    # Check if the template is in cache
-    if template_key in _template_cache:
-        return _template_cache[template_key]
-    
     # Try to get template from database
     template = await TextTemplate.find_one({"template_key": template_key})
     
@@ -42,10 +38,6 @@ def sync_get_template(template_key: str, default_text: str = None) -> str:
     """
     from app.db.models import TextTemplate
     global _template_cache
-    # Check cache first
-    if template_key in _template_cache:
-        print(_template_cache[template_key])
-        return _template_cache[template_key]
 
     # Direct sync DB query (assuming TextTemplate uses Motor or PyMongo)
     # If using Motor (async), you need to use PyMongo for sync here
