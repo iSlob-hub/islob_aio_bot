@@ -19,7 +19,8 @@ import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 import app.keyboards as kb
-from app.utils.text_templates import sync_get_template
+from app.utils.text_templates import sync_get_template, get_template, format_template
+
 import os
 from dotenv import load_dotenv
 
@@ -38,12 +39,12 @@ training_router = Router()
 async def start_training(message: Message, state: FSMContext) -> None:
     # remove reply keyboard if it exists
     await message.answer(
-        text="Починаємо тренування!",
+        text=await get_template("lets_start_training"),
         reply_markup=ReplyKeyboardRemove(),
     )
 
     await message.answer(
-        text="Як ти себе почуваєш перед тренуванням?",
+        text=await get_template("how_do_you_feel_before_training"),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -91,7 +92,7 @@ async def start_training(message: Message, state: FSMContext) -> None:
 )
 async def back_to_main_menu(message: Message, state: FSMContext) -> None:
     await message.answer(
-        text="Ага, вертаємось до головного меню",
+        text=await get_template("back_to_main_menu"),
         reply_markup=await kb.get_main_menu_keyboard(),
     )
     await state.set_state(MainMenuState.main_menu)
@@ -129,32 +130,32 @@ async def handle_how_do_you_feel_before(
                 )
                 
                 await callback_query.message.answer_document(
-                    document=training_pdf, caption="Ось твій тренувальний план на сьогодні."
+                    document=training_pdf, caption=await get_template("here_is_your_training_file")
                 )
                 print(f"DEBUG: Successfully sent training PDF to {callback_query.from_user.id}")
             except Exception as e:
                 print(f"Failed to send training PDF: {e}")
                 await callback_query.message.answer(
-                    text="Не вдалося завантажити файл тренування, але ти можеш почати тренування."
+                    text=await get_template("training_file_unavailable")
                 )
         else:
             print("DEBUG: BASE_HOST is empty or None")
             await callback_query.message.answer(
-                text="Файл тренування недоступний, але ти можеш почати тренування."
+                text=await get_template("training_file_unavailable")
             )
     else:
         print(f"DEBUG: User {callback_query.from_user.id} has no training_file_url")
         await callback_query.message.answer(
-            text="У тебе немає завантаженого файлу тренування, але ти можеш почати тренування."
+            text=await get_template("training_file_unavailable")
         )
 
     await callback_query.message.answer(
-        text="Тренування розпочато! Для завершення - натисни кнопку нижче.",
+        text=await get_template("start_your_training"),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="Завершити тренування",
+                        text=await get_template("finish_training_button"),
                         callback_data=f"finish_training_{training_session_id}",
                     )
                 ]
@@ -178,7 +179,7 @@ async def finish_training(callback_query: CallbackQuery, state: FSMContext) -> N
     await state.update_data(training_session_id=training_session_id)
 
     if not training_session:
-        await callback_query.message.answer("Тренування не знайдено.")
+        await callback_query.message.answer(await get_template("training_not_found"))
         return
 
     training_session.training_ended_at = datetime.datetime.now(
@@ -223,7 +224,7 @@ async def finish_training(callback_query: CallbackQuery, state: FSMContext) -> N
     await callback_query.answer()
 
     await callback_query.message.answer(
-        text="Супер! Тренування завершено! \nОціни важкість тренування?",
+        text=await get_template("how_hard_was_training"),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -279,7 +280,7 @@ async def handle_how_hard_was_training(
     training_session = await TrainingSession.get(training_session_id)
 
     if not training_session:
-        await callback_query.message.answer("Тренування не знайдено.")
+        await callback_query.message.answer(await get_template("training_not_found"))
         return
 
     training_session.how_hard_was_training = int(rating)
@@ -288,7 +289,7 @@ async def handle_how_hard_was_training(
     await callback_query.answer()
 
     await callback_query.message.edit_text(
-        text="Чи відчуваєш ти біль після тренування?",
+        text=await get_template("do_you_have_any_pain"),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -318,7 +319,7 @@ async def handle_do_you_have_any_pain(
     training_session = await TrainingSession.get(training_session_id)
 
     if not training_session:
-        await callback_query.message.answer("Тренування не знайдено.")
+        await callback_query.message.answer(await get_template("training_not_found"))
         return
 
     training_session.do_you_have_any_pain = answer == "yes"
@@ -335,10 +336,8 @@ async def handle_do_you_have_any_pain(
         )
 
     await callback_query.message.edit_text(
-        text=(
-            f"Дякую за тренування!"
-            f"Тренування тривало {training_session.training_duration:.2f} хвилин.\n"
-        )
+        text=await format_template("thank_you_for_training", duration=f"{training_session.training_duration:.2f} хвилин")
+
     )
 
     # Створюємо сповіщення для наступного дня о 15:00
@@ -395,7 +394,7 @@ async def handle_do_you_have_any_pain(
     await training_session.save()
 
     await callback_query.message.answer(
-        text="Повертаємося до головного меню.",
+        text=await get_template("back_to_main_menu"),
         reply_markup=await get_main_menu_keyboard(),
     )
 
@@ -412,11 +411,11 @@ async def after_training_quiz(callback_query: CallbackQuery, state: FSMContext) 
     training_session = await TrainingSession.get(training_session_id)
 
     if not training_session:
-        await callback_query.message.answer("Тренування не знайдено.")
+        await callback_query.message.answer(await get_template("training_not_found"))
         return
 
     await callback_query.message.edit_text(
-        text="У тебе є крепатура?",
+        text=await get_template("do_you_have_soreness"),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -447,7 +446,7 @@ async def handle_do_you_have_soreness(
     training_session = await TrainingSession.get(training_session_id)
 
     if not training_session:
-        await callback_query.message.answer("Тренування не знайдено.")
+        await callback_query.message.answer(await get_template("training_not_found"))
         return
 
     training_session.do_you_have_soreness = answer == "yes"
@@ -464,7 +463,7 @@ async def handle_do_you_have_soreness(
         )
 
     await callback_query.message.edit_text(
-        text="Оціни свій рівень стресу після тренування (1-10):",
+        text=await get_template("stress_level_prompt"),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -518,7 +517,7 @@ async def handle_stress_level(callback_query: CallbackQuery, state: FSMContext) 
     training_session = await TrainingSession.get(training_session_id)
 
     if not training_session:
-        await callback_query.message.answer("Тренування не знайдено.")
+        await callback_query.message.answer(await get_template("training_not_found"))
         return
 
     training_session.stress_level = stress_level
@@ -546,7 +545,7 @@ async def handle_stress_level(callback_query: CallbackQuery, state: FSMContext) 
         print(f"Deleted {len(notifications_to_delete)} after-training notifications for user {callback_query.from_user.id} on {current_date}")
 
     await callback_query.message.answer(
-        text="Дякую за відповіді! Гарного дня!",
+        text=await get_template("thanks_for_your_training_feedback"),
         reply_markup=await get_main_menu_keyboard(),
     )
 

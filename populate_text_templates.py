@@ -89,6 +89,20 @@ DEFAULT_TEMPLATES = {
     # (duplicates removed)
     "status_label": "Статус: {status}",
     "here_summary": "Ось підсумок:",
+    "lets_start_training": "Починаємо тренування!",
+    "how_do_you_feel_before_training": "Як ти себе почуваєш перед тренуванням?",
+    "here_is_your_training_file": "Ось твій тренувальний план на сьогодні.",
+    "training_file_unavailable": "Файл тренування недоступний, але ти можеш почати тренування.",
+    "start_your_training": "Тренування розпочато! Для завершення - натисни кнопку нижче.",
+    "failed_to_send_training_file": "Не вдалося надіслати файл тренування.",
+    "finish_training_button": "Завершити тренування",
+    "training_not_found": "Тренування не знайдено.",
+    "how_hard_was_training": "Супер! Тренування завершено! \nОціни важкість тренування?",
+    "do_you_have_any_pain": "Чи відчуваєш ти біль після тренування?",
+    "thank_you_for_training": "Дякую за тренування!\nТренування тривало {duration}.\n",
+    "do_you_have_soreness": "У тебе є крепатура?",
+    "stress_level_prompt": "Оціни свій рівень стресу після тренування (1-10):",
+    "thanks_for_your_training_feedback": "Дякую за відповіді! Гарного дня!",
 }
 
 async def main():
