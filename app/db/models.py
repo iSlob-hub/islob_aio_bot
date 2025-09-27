@@ -18,7 +18,8 @@ class User(Document):
     is_verified: bool = False
     training_goal: TrainingGoal = TrainingGoal.MAINTAIN_FITNESS
     created_at: datetime = Field(default_factory=datetime.now)
-
+    payed_days_left: int = 28 # 4 weeks -> default payment, -1 -> means unlimited
+    paused_payment: bool = False
     training_file_url: Optional[str] = None
 
     class Settings:

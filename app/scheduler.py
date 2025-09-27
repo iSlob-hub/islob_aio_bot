@@ -17,6 +17,8 @@ logging.getLogger("pymongo").setLevel(logging.WARNING)
 logging.getLogger("pymongo.command").setLevel(logging.WARNING)
 logging.getLogger("pymongo.connection").setLevel(logging.WARNING)
 
+ADMIN_CHAT_ID = settings.ADMIN_CHAT_ID
+
 logger = logging.getLogger(__name__)
 
 zone_info = ZoneInfo("Europe/Kyiv")
@@ -75,6 +77,23 @@ class BotScheduler:
                 minute="0",
                 hour="15",
                 id="after_training_notification",
+                replace_existing=True,
+            )
+
+            self.scheduler.add_job(
+                self.update_payment_days,
+                "cron",
+                hour="5",
+                minute="0",
+                id="update_payment_days",
+                replace_existing=True,
+            )
+
+            self.scheduler.add_job(
+                self.check_unpaid_users,
+                "cron",
+                hour="6",
+                id="check_unpaid_users",
                 replace_existing=True,
             )
 
@@ -436,6 +455,55 @@ class BotScheduler:
 
         except Exception as e:
             print(f"Failed to send gym reminder notifications: {e}")
+
+
+    async def update_payment_days(self):
+        try:
+            users = await User.find(
+                {
+                    "payed_days_left": {"$gt": 0},
+                    "paused_payment": False,
+                }
+            ).to_list()
+            for user in users:
+                user.payed_days_left -= 1
+                await user.save()
+
+        except Exception as e:
+            print(f"Failed to process payment change: {e}")
+
+    async def check_unpaid_users(self):
+        try:
+            users = await User.find(
+                {
+                    "payed_days_left": {"$gte": 0},
+                    "paused_payment": False,
+                }
+            ).to_list()
+            for user in users:
+                if user.payed_days_left == 0:
+                    await self.bot.send_message(
+                        chat_id=ADMIN_CHAT_ID,
+                        text=f'#Payments У користувача <a href="tg://user?id={user.telegram_id}"> {user.full_name} @{user.telegram_username} ({user.telegram_id})</a> закінчився платний період.',
+                    )
+                    print(f"Notified user {user.id} about subscription expiration")
+                
+                if user.payed_days_left == 7:
+                    await self.bot.send_message(
+                        chat_id=ADMIN_CHAT_ID,
+                        text=f"#Payments У користувача <a href=\"tg://user?id={user.telegram_id}\"> {user.full_name} @{user.telegram_username} ({user.telegram_id})</a> залишився 1 тиждень платного періоду.",
+                    )
+                    print(f"Notified user {user.id} about 7 days left")
+
+                if user.payed_days_left == 1:
+                    await self.bot.send_message(
+                        chat_id=ADMIN_CHAT_ID,
+                        text=f"#Payments У користувача <a href=\"tg://user?id={user.telegram_id}\"> {user.full_name} @{user.telegram_username} ({user.telegram_id})</a> залишився 1 день платного періоду.",
+                    )
+                    print(f"Notified user {user.id} about 1 day left")
+
+        except Exception as e:
+            print(f"Failed to check unpaid users: {e}")
 
     def shutdown(self):
         """Gracefully shutdown the scheduler"""

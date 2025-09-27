@@ -66,9 +66,9 @@ async def process_notification_menu(message: Message, state: FSMContext) -> None
                         InlineKeyboardButton(
                             text=await format_template("button_delete", "Видалити"), callback_data=delete_callback
                         ),
-                            InlineKeyboardButton(
-                                text=await format_template("button_edit", "Редагувати"), callback_data=edit_callback
-                            ),
+                        InlineKeyboardButton(
+                            text=await format_template("button_edit", "Редагувати"), callback_data=edit_callback
+                        ),
                     ]
                 ]
             )
@@ -85,9 +85,10 @@ async def process_notification_menu(message: Message, state: FSMContext) -> None
         StateFilter(NotificationsState.viewing_notifications),
     )
     async def edit_notification_start(callback: CallbackQuery, state: FSMContext):
+        callback.answer()
         notification_id = callback.data.removeprefix("edit_")
         notification = await Notification.get(notification_id)
-        if not notifications:
+        if not notification:
             await message.answer(await format_template("notif_none", "У вас немає сповіщень."))
             return
         await state.update_data(edit_notification_id=notification_id)
@@ -240,9 +241,12 @@ async def process_notification_menu(message: Message, state: FSMContext) -> None
         if data["edit_frequency"] == "freq_weekly":
             weekdays = ", ".join([day for day in data.get("edit_weekdays", [])])
             status_text += f"Дні: {weekdays}\n"
+            status_text += f"Час: {user_input}\n" + await format_template("confirm_changes_prompt", "✅ Підтвердити зміни?")
         if data["edit_frequency"] == "freq_monthly":
             monthdays = ", ".join([day for day in data.get("edit_monthdays", [])])
             status_text += f"Дні: {monthdays}\n"
+            status_text += f"Час: {user_input}\n" + await format_template("confirm_changes_prompt", "✅ Підтвердити зміни?")
+        if data["edit_frequency"] == "freq_daily":
             status_text += f"Час: {user_input}\n" + await format_template("confirm_changes_prompt", "✅ Підтвердити зміни?")
         confirm_keyboard = InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text="✅ Зберегти зміни", callback_data="confirm_edit_notification")]]

@@ -2,26 +2,155 @@
 
 {% block title %}Профіль користувача{% endblock %}
 
+{% block extra_css %}
+<style>
+.payment-info {
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border-left: 4px solid #007bff;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+}
+.payment-badge {
+    font-size: 1.1em;
+    padding: 8px 16px;
+}
+.payment-actions {
+    margin-top: 15px;
+}
+.payment-actions .btn {
+    margin: 5px;
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="card shadow-sm mx-auto" style="max-width: 600px;">
+<div class="card shadow-sm mx-auto" style="max-width: 800px;">
     <div class="card-body">
         <h2 class="card-title">Профіль користувача</h2>
-        <p><strong>Telegram ID:</strong> {{ user.telegram_id }}</p>
-        <p><strong>Повне ім’я:</strong> {{ user.full_name }}</p>
-        <p><strong>Username:</strong> @{{ user.telegram_username }}</p>
-        <p>
-            <strong>Статус:</strong>
-            {% if user.is_verified %}✅ Верифікований {% else %}❌ Не верифікований{% endif %}
-            /
-            {% if user.is_active %}🟢 Активний{% else %}🔴 Неактивний{% endif %}
-        </p>
-        <a class="btn btn-primary" href="/training-sessions?telegram_id={{ user.telegram_id }}">Тренування</a>
-        <a class="btn btn-secondary" href="/morning-quiz?telegram_id={{ user.telegram_id }}">Ранкові опитування</a>
-        <a class="btn btn-success" href="/statistics?telegram_id={{ user.telegram_id }}">Статистика</a>
-        <a class="btn btn-warning" href="/notifications?telegram_id={{ user.telegram_id }}">Сповіщення</a>
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>Telegram ID:</strong> {{ user.telegram_id }}</p>
+                <p><strong>Повне ім'я:</strong> {{ user.full_name }}</p>
+                <p><strong>Username:</strong> @{{ user.telegram_username }}</p>
+                <p><strong>Ціль тренувань:</strong> {{ user.training_goal.value }}</p>
+                <p>
+                    <strong>Статус:</strong>
+                    {% if user.is_verified %}✅ Верифікований {% else %}❌ Не верифікований{% endif %}
+                    /
+                    {% if user.is_active %}🟢 Активний{% else %}🔴 Неактивний{% endif %}
+                </p>
+            </div>
+            
+            <div class="col-md-6">
+                <!-- Інформація про оплату -->
+                <div class="payment-info">
+                    <h5><i class="fas fa-credit-card"></i> Інформація про оплату</h5>
+                    
+                    <div class="mb-3">
+                        {% if user.payed_days_left == -1 %}
+                            <span class="badge bg-info payment-badge">♾️ Безлімітний доступ</span>
+                        {% elif user.payed_days_left == 0 %}
+                            <span class="badge bg-secondary payment-badge">⏰ Оплата закінчилась</span>
+                        {% elif user.payed_days_left == 1 %}
+                            <span class="badge bg-danger payment-badge">⚠️ Залишився 1 день</span>
+                        {% elif user.payed_days_left <= 7 %}
+                            <span class="badge bg-warning payment-badge">⏰ Залишилось {{ user.payed_days_left }} днів</span>
+                        {% else %}
+                            <span class="badge bg-success payment-badge">✅ Залишилось {{ user.payed_days_left }} днів</span>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Статус оплати:</strong>
+                        {% if user.paused_payment %}
+                            <span class="badge bg-dark">⏸️ На паузі</span>
+                        {% else %}
+                            <span class="badge bg-success">▶️ Активна</span>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="payment-actions">
+                        <div class="row">
+                            <div class="col-12 mb-2">
+                                {% if user.paused_payment %}
+                                    <form method="post" action="/resume-payment?telegram_id={{ user.telegram_id }}" style="display: inline;">
+                                        <button type="submit" class="btn btn-success btn-sm">
+                                            <i class="fas fa-play"></i> Відновити оплату
+                                        </button>
+                                    </form>
+                                {% else %}
+                                    <form method="post" action="/pause-payment?telegram_id={{ user.telegram_id }}" style="display: inline;">
+                                        <button type="submit" class="btn btn-warning btn-sm">
+                                            <i class="fas fa-pause"></i> Поставити на паузу
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="col-12">
+                                <div class="btn-group-vertical w-100" role="group">
+                                    <form method="post" action="/add-payment?telegram_id={{ user.telegram_id }}&days=7" style="display: inline;">
+                                        <button type="submit" class="btn btn-outline-primary btn-sm w-100 mb-1">
+                                            <i class="fas fa-plus"></i> +7 днів
+                                        </button>
+                                    </form>
+                                    
+                                    <form method="post" action="/add-payment?telegram_id={{ user.telegram_id }}&days=28" style="display: inline;">
+                                        <button type="submit" class="btn btn-primary btn-sm w-100 mb-1">
+                                            <i class="fas fa-plus"></i> +28 днів (1 місяць)
+                                        </button>
+                                    </form>
+                                    
+                                    <form method="post" action="/add-payment?telegram_id={{ user.telegram_id }}&days=84" style="display: inline;">
+                                        <button type="submit" class="btn btn-outline-primary btn-sm w-100 mb-1">
+                                            <i class="fas fa-plus"></i> +84 дні (3 місяці)
+                                        </button>
+                                    </form>
+                                    
+                                    {% if user.payed_days_left != -1 %}
+                                    <form method="post" action="/set-unlimited?telegram_id={{ user.telegram_id }}" style="display: inline;">
+                                        <button type="submit" class="btn btn-info btn-sm w-100" 
+                                                onclick="return confirm('Ви впевнені, що хочете встановити безлімітний доступ?')">
+                                            <i class="fas fa-infinity"></i> Безлімітний доступ
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <hr class="my-2">
+                                    <small class="text-muted">Відміна безлімітного доступу:</small>
+                                    <form method="post" action="/cancel-unlimited?telegram_id={{ user.telegram_id }}&days=28" style="display: inline;">
+                                        <button type="submit" class="btn btn-outline-warning btn-sm w-100 mb-1" 
+                                                onclick="return confirm('Відмінити безлімітний доступ і встановити 28 днів?')">
+                                            <i class="fas fa-times-circle"></i> Відмінити (28 днів)
+                                        </button>
+                                    </form>
+                                    <form method="post" action="/cancel-unlimited?telegram_id={{ user.telegram_id }}&days=0" style="display: inline;">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm w-100" 
+                                                onclick="return confirm('Відмінити безлімітний доступ і встановити 0 днів (заблокувати)?')">
+                                            <i class="fas fa-ban"></i> Відмінити (0 днів)
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <hr class="my-4">
+        
+        <div class="mb-3">
+            <a class="btn btn-primary" href="/training-sessions?telegram_id={{ user.telegram_id }}">Тренування</a>
+            <a class="btn btn-secondary" href="/morning-quiz?telegram_id={{ user.telegram_id }}">Ранкові опитування</a>
+            <a class="btn btn-success" href="/statistics?telegram_id={{ user.telegram_id }}">Статистика</a>
+            <a class="btn btn-warning" href="/notifications?telegram_id={{ user.telegram_id }}">Сповіщення</a>
+        </div>
 
+        <hr class="my-4">
 
-        <h3>Training file</h3>
+        <h3><i class="fas fa-file-alt"></i> Файл тренування</h3>
 
         <div class="mb-4">
         {% if user.training_file_url %}
@@ -48,7 +177,9 @@
             <label for="file" class="form-label">Виберіть файл для завантаження</label>
             <input type="file" name="file" id="file" class="form-control" required>
             </div>
-            <button type="submit" class="btn btn-primary">Завантажити файл</button>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-upload"></i> Завантажити файл
+            </button>
         </form>
         </div>
 

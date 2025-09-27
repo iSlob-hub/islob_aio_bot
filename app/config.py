@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4.1-mini"
 
-    ADMIN_CHAT_ID: Optional[str] = None
+    ADMIN_CHAT_ID: Optional[str]
 
     # Generate MongoDB connection string
     @property

@@ -227,6 +227,97 @@ async def upload_training_file(
     return RedirectResponse(f"/profile?telegram_id={user_telegram_id}", status_code=302)
 
 
+@app.post("/pause-payment")
+async def pause_payment(
+    request: Request,
+    telegram_id: str,
+    user: User = Depends(get_admin_user)
+):
+    """Поставити оплату користувача на паузу"""
+    user_profile = await User.find_one(User.telegram_id == telegram_id)
+    if not user_profile:
+        raise HTTPException(status_code=404, detail="Користувача не знайдено")
+    
+    user_profile.paused_payment = True
+    await user_profile.save()
+    
+    return RedirectResponse(f"/profile?telegram_id={telegram_id}", status_code=302)
+
+
+@app.post("/resume-payment")
+async def resume_payment(
+    request: Request,
+    telegram_id: str,
+    user: User = Depends(get_admin_user)
+):
+    """Відновити оплату користувача"""
+    user_profile = await User.find_one(User.telegram_id == telegram_id)
+    if not user_profile:
+        raise HTTPException(status_code=404, detail="Користувача не знайдено")
+    
+    user_profile.paused_payment = False
+    await user_profile.save()
+    
+    return RedirectResponse(f"/profile?telegram_id={telegram_id}", status_code=302)
+
+
+@app.post("/add-payment")
+async def add_payment(
+    request: Request,
+    telegram_id: str,
+    days: int = 28,
+    user: User = Depends(get_admin_user)
+):
+    """Додати оплачені дні користувачу"""
+    user_profile = await User.find_one(User.telegram_id == telegram_id)
+    if not user_profile:
+        raise HTTPException(status_code=404, detail="Користувача не знайдено")
+    
+    # Якщо у користувача безлімітний тариф (-1), не змінюємо
+    if user_profile.payed_days_left != -1:
+        user_profile.payed_days_left += days
+    
+    await user_profile.save()
+    
+    return RedirectResponse(f"/profile?telegram_id={telegram_id}", status_code=302)
+
+
+@app.post("/set-unlimited")
+async def set_unlimited(
+    request: Request,
+    telegram_id: str,
+    user: User = Depends(get_admin_user)
+):
+    """Встановити безлімітний доступ для користувача"""
+    user_profile = await User.find_one(User.telegram_id == telegram_id)
+    if not user_profile:
+        raise HTTPException(status_code=404, detail="Користувача не знайдено")
+    
+    user_profile.payed_days_left = -1
+    await user_profile.save()
+    
+    return RedirectResponse(f"/profile?telegram_id={telegram_id}", status_code=302)
+
+
+@app.post("/cancel-unlimited")
+async def cancel_unlimited(
+    request: Request,
+    telegram_id: str,
+    days: int = 28,
+    user: User = Depends(get_admin_user)
+):
+    """Відмінити безлімітний доступ та встановити звичайний тариф"""
+    user_profile = await User.find_one(User.telegram_id == telegram_id)
+    if not user_profile:
+        raise HTTPException(status_code=404, detail="Користувача не знайдено")
+    
+    # Встановлюємо звичайний тариф з вказаною кількістю днів
+    user_profile.payed_days_left = days
+    await user_profile.save()
+    
+    return RedirectResponse(f"/profile?telegram_id={telegram_id}", status_code=302)
+
+
 @app.get("/morning-quiz", response_class=HTMLResponse)
 async def morning_dashboard(request: Request, telegram_id: str, user: User = Depends(get_admin_user)):
     user_profile = await User.find_one(User.telegram_id == telegram_id)
@@ -294,6 +385,8 @@ async def notifications_page(
         "user": user_profile,
         "current_user": user
     })
+
+
 
 
 @app.get("/bot-settings", response_class=HTMLResponse)
