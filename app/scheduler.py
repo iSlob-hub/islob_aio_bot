@@ -10,6 +10,7 @@ from app.statistics_scheduler import statistics_scheduler
 from zoneinfo import ZoneInfo
 from croniter import croniter
 import logging
+from utils.text_templates import get_template
 
 # Налаштовуємо логування - вимикаємо докладні логи MongoDB
 logging.basicConfig(level=logging.DEBUG)
@@ -192,12 +193,12 @@ class BotScheduler:
             try:
                 await self.bot.send_message(
                     chat_id=recipient,
-                    text="Ейоу, пора пройти ранкове опитування!",
+                    text=await get_template("morning_quiz_intro"),
                     reply_markup=InlineKeyboardMarkup(
                         inline_keyboard=[
                             [
                                 InlineKeyboardButton(
-                                    text="Почати опитування",
+                                    text=await get_template("start_morning_quiz_button"),
                                     callback_data=f"start_morning_quiz_{morning_quiz_id}",
                                 )
                             ]
@@ -261,12 +262,12 @@ class BotScheduler:
                     
                 await self.bot.send_message(
                     chat_id=notification.user_id,
-                    text="Ейоу! Пора пройти опитування після тренування вчора!",
+                    text=await get_template("after_training_quiz_intro"),
                     reply_markup=InlineKeyboardMarkup(
                         inline_keyboard=[
                             [
                                 InlineKeyboardButton(
-                                    text="Почати опитування",
+                                    text=await get_template("start_after_training_quiz_button"),
                                     callback_data=f"start_after_training_quiz_{training_session_id}",
                                 )
                             ]
@@ -298,7 +299,7 @@ class BotScheduler:
             try:
                 await self.bot.send_message(
                     chat_id=session.user_id,
-                    text="Тренування триває вже більше 60 хвилин, будь ласка, заверши його, якщо забув.",  # Оновлено текст
+                    text=await get_template("too_long_training_notification"),
                 )
                 session.training_warning_message_sent = True
                 await session.save()
@@ -446,7 +447,7 @@ class BotScheduler:
                 # Відправляємо нагадування
                 await self.bot.send_message(
                     chat_id=notification.user_id,
-                    text="🏋️‍♂️ Час для тренування! Не забудь тренувальну сесію."
+                    text=await get_template("gym_reminder_notification_text"),
                 )
                 
                 await notification.delete()
