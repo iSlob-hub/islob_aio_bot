@@ -29,7 +29,6 @@ DEFAULT_TEMPLATES = {
     "report_problem_button": "❗️ Повідомити про проблему",
     "what_do_with_notifications": "Шо робимо зі сповіщеннями?",
     "describe_problem_prompt": "Опишіть свою проблему у повідомленні",
-    "morning_quiz_intro": "Ейоу, пора пройти ранкове опитування!",
     "start_quiz_button": "Почати опитування",
     "select_option": "Виберіть опцію:",
     "what_do_with_training": "Шо робимо з тренуваннями?",
@@ -57,6 +56,7 @@ DEFAULT_TEMPLATES = {
     "thanks_for_reporting_problem": "Дякуємо за повідомлення про проблему! Ми обов'язково розглянемо її.",
     # Notifications router templates
     "notif_back_to_main_menu": "Ага, вертаємось до головного меню",
+    "back_to_main_menu": "Ага, вертаємось до головного меню",
     "notif_create_new": "Створюємо нове сповіщення. Введіть текст сповіщення.",
     "notif_none": "У вас немає сповіщень.",
     "notif_all": "Це всі ваші сповіщення.",
