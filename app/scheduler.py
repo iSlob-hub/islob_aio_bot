@@ -10,7 +10,7 @@ from app.statistics_scheduler import statistics_scheduler
 from zoneinfo import ZoneInfo
 from croniter import croniter
 import logging
-from utils.text_templates import get_template
+from app.utils.text_templates import get_template
 
 # Налаштовуємо логування - вимикаємо докладні логи MongoDB
 logging.basicConfig(level=logging.DEBUG)
