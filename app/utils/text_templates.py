@@ -39,14 +39,15 @@ def sync_get_template(template_key: str, default_text: str = None) -> str:
     from app.db.models import TextTemplate
     global _template_cache
 
-    # Direct sync DB query (assuming TextTemplate uses Motor or PyMongo)
-    # If using Motor (async), you need to use PyMongo for sync here
     try:
         from pymongo import MongoClient
         import os
-        mongo_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+        from dotenv import load_dotenv
+        load_dotenv()
+        mongo_url = os.getenv("MONGODB_URL")
         client = MongoClient(mongo_url)
-        db = client.get_database("islobbot-dev")
+        DB_NAME = os.environ.get("MONGODB_DB_NAME", "islobbot")
+        db = client.get_database(DB_NAME)
         collection = db["text_templates"]
         template = collection.find_one({"template_key": template_key})
         if template and "template_text" in template:
