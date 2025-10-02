@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.jobstores.memory import MemoryJobStore
+from apscheduler.jobstores.mongodb import MongoDBJobStore
 from apscheduler.executors.asyncio import AsyncIOExecutor
 from app.config import settings
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -24,8 +24,37 @@ logger = logging.getLogger(__name__)
 
 zone_info = ZoneInfo("Europe/Kyiv")
 
+# MongoDB jobstore configuration
+def get_jobstore_config():
+    try:
+        # Parse MongoDB connection details from settings
+        if settings.MONGODB_USER and settings.MONGODB_PASSWORD:
+            print("Using authenticated MongoDB connection")
+            # Use MongoDB Atlas/authenticated connection
+            return MongoDBJobStore(
+                host=settings.MONGODB_HOST,
+                username=settings.MONGODB_USER,
+                password=settings.MONGODB_PASSWORD,
+                database=settings.MONGODB_DB_NAME,
+                collection="scheduler_jobs"
+            )
+        else:
+            # Use local MongoDB without auth
+            print("Using unauthenticated MongoDB connection")
+            return MongoDBJobStore(
+                host=settings.MONGODB_HOST,
+                port=settings.MONGODB_PORT,
+                database=settings.MONGODB_DB_NAME,
+                collection="scheduler_jobs"
+            )
+    except Exception as e:
+        print(f"Failed to configure MongoDB jobstore: {e}")
+        print("Falling back to MemoryJobStore")
+        from apscheduler.jobstores.memory import MemoryJobStore
+        return MemoryJobStore()
+
 jobstores = {
-    "default": MemoryJobStore(),
+    "default": get_jobstore_config(),
 }
 
 

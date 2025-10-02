@@ -51,8 +51,60 @@ class StatisticsAnalyzer:
             logger.error(f"Помилка завантаження системної інструкції: {e}")
             return "Ти - AI-асистент для аналізу фітнес-статистики. Відповідай коротко та структуровано."
     
+    def _calculate_data_completeness(self, stats_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Розраховує відсоток заповнення даних та кількість пропущених днів"""
+        
+        # Визначаємо очікувану кількість днів на основі типу періоду
+        period_type = stats_data.get("period_type", "weekly")
+        expected_days = 7 if period_type == "weekly" else 30  # базові значення
+        
+        # Рахуємо фактичні дні з даними
+        total_quizzes = stats_data.get("total_morning_quizzes", 0)
+        total_sessions = stats_data.get("total_training_sessions", 0)
+        
+        # Додаткова перевірка через data_points у метриках
+        max_data_points = 0
+        missing_days_in_metrics = 0
+        
+        for metric_type in ["stress_data", "warehouse_data", "sleep_data", "wellbeing_data", "weight_data"]:
+            metric_data = stats_data.get(metric_type)
+            if metric_data and "data_points" in metric_data:
+                data_points = metric_data.get("data_points", [])
+                max_data_points = max(max_data_points, len(data_points))
+                
+                # Рахуємо пропуски (None значення)
+                null_count = sum(1 for point in data_points if point.get("value") is None)
+                missing_days_in_metrics = max(missing_days_in_metrics, null_count)
+        
+        # Використовуємо максимальну кількість точок як базу
+        if max_data_points > 0:
+            expected_days = max_data_points
+        
+        # Рахуємо пропущені дні
+        missing_days = expected_days - max(total_quizzes, total_sessions)
+        if missing_days_in_metrics > 0:
+            missing_days = max(missing_days, missing_days_in_metrics)
+        
+        # Забезпечуємо, що пропуски не можуть бути негативними
+        missing_days = max(0, missing_days)
+        
+        # Розраховуємо відсоток заповнення
+        filled_days = expected_days - missing_days
+        completion_percentage = (filled_days / expected_days * 100) if expected_days > 0 else 100
+        
+        return {
+            "expected_days": expected_days,
+            "filled_days": filled_days, 
+            "missing_days": missing_days,
+            "completion_percentage": round(completion_percentage, 1),
+            "has_missing_data": missing_days > 0
+        }
+
     def format_statistics_for_analysis(self, stats_data: Dict[str, Any]) -> str:
         """Форматування статистики для передачі асистенту"""
+        
+        # Розраховуємо повноту даних
+        data_completeness = self._calculate_data_completeness(stats_data)
         
         analysis_data = {
             "period": {
@@ -60,10 +112,14 @@ class StatisticsAnalyzer:
                 "start": stats_data.get("period_start"),
                 "end": stats_data.get("period_end")
             },
+            "user_profile": {
+                "training_goal": stats_data.get("training_goal", "Підтримка форми")
+            },
             "summary": {
                 "total_training_sessions": stats_data.get("total_training_sessions", 0),
                 "total_morning_quizzes": stats_data.get("total_morning_quizzes", 0)
             },
+            "data_completeness": data_completeness,
             "metrics": {}
         }
         
@@ -90,14 +146,25 @@ class StatisticsAnalyzer:
                     })
         
         # Формуємо текст для аналізу
+        data_comp = analysis_data['data_completeness']
         formatted_text = f"""
 Аналіз фітнес статистики користувача
 
 ПЕРІОД: {analysis_data['period']['type']} ({analysis_data['period']['start']} - {analysis_data['period']['end']})
 
+ПРОФІЛЬ КОРИСТУВАЧА:
+- Ціль тренувань: {analysis_data['user_profile']['training_goal']}
+
 ЗАГАЛЬНА ІНФОРМАЦІЯ:
 - Кількість тренувань: {analysis_data['summary']['total_training_sessions']}
 - Кількість ранкових квізів: {analysis_data['summary']['total_morning_quizzes']}
+
+ПОВНОТА ДАНИХ:
+- Очікувана кількість днів: {data_comp['expected_days']}
+- Заповнено днів: {data_comp['filled_days']}
+- Пропущено днів: {data_comp['missing_days']}
+- Відсоток заповнення: {data_comp['completion_percentage']}%
+- Є пропуски даних: {'ТАК' if data_comp['has_missing_data'] else 'НІ'}
 
 ДЕТАЛЬНІ МЕТРИКИ:
 """
@@ -173,11 +240,17 @@ class StatisticsAnalyzer:
         """Аналіз статистики та збереження результату"""
         
         try:
+            # Отримуємо дані користувача для включення цілі тренування
+            from app.db.models import User
+            user = await User.find_one(User.telegram_id == user_statistics.user_id)
+            training_goal = user.training_goal.value if user and user.training_goal else "Підтримка форми"
+            
             # Конвертуємо статистику в словник
             stats_dict = {
                 "period_type": user_statistics.period_type.value,
                 "period_start": user_statistics.period_start.isoformat(),
                 "period_end": user_statistics.period_end.isoformat(),
+                "training_goal": training_goal,
                 "total_training_sessions": user_statistics.total_training_sessions,
                 "total_morning_quizzes": user_statistics.total_morning_quizzes,
                 "stress_data": user_statistics.stress_data,
