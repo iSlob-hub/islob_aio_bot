@@ -78,9 +78,8 @@ class BotScheduler:
 
             self.scheduler.add_job(
                 self.send_after_training_notification,
-                "cron",
-                minute="0",
-                hour="15",
+                "interval",
+                minutes=1,
                 id="after_training_notification",
                 replace_existing=True,
             )
@@ -218,14 +217,13 @@ class BotScheduler:
                 logger.debug(f"Failed to send morning quiz to {recipient}: {e}")
 
     async def send_after_training_notification(self):
+        """Send after training notifications - works similar to daily notifications"""
         try:
             current_time = datetime.now(tz=zone_info)
             current_time_str = current_time.strftime("%H:%M")
-            print(f"DEBUG: Checking after-training notifications at {current_time_str}")
-            if current_time_str != "15:00":
-                return
-                
             current_date = current_time.date()
+            
+            print(f"DEBUG: Checking after-training notifications at {current_time_str}")
             
             notifications = await Notification.find(
                 {
@@ -234,8 +232,22 @@ class BotScheduler:
                 }
             ).to_list()
 
+            print(f"DEBUG: Found {len(notifications)} after-training notifications")
+
             for notification in notifications:
-                # Перевіряємо чи має відправитись сьогодні
+                notification_time = notification.notification_time
+                
+                print(f"DEBUG: User {notification.user_id} notification time: {notification_time}, current: {current_time_str}")
+                
+                # Check if notification time matches current time
+                if notification_time != current_time_str:
+                    continue
+                
+                # Initialize system_data if not exists
+                if not notification.system_data:
+                    notification.system_data = {}
+                
+                # Check if we have a scheduled date and training session
                 scheduled_date_str = notification.system_data.get("scheduled_date")
                 if not scheduled_date_str:
                     print(f"No scheduled_date for notification {notification.id}")
@@ -244,26 +256,34 @@ class BotScheduler:
                 from datetime import date
                 scheduled_date = date.fromisoformat(scheduled_date_str)
                 
-                # Відправляємо тільки якщо сьогодні запланована дата
+                # Only send if today is the scheduled date
                 if scheduled_date != current_date:
+                    print(f"Notification {notification.id} scheduled for {scheduled_date}, today is {current_date}")
                     continue
                     
-                # Перевіряємо чи вже відправлялось
+                # Check if already sent today
                 if notification.system_data.get("sent", False):
                     print(f"Notification {notification.id} already sent")
                     continue
                 
+                # Verify training session exists and is completed
                 training_session_id = notification.system_data.get("training_session_id")
+                if not training_session_id:
+                    print(f"No training session ID for notification {notification.id}")
+                    continue
+                    
                 training_session = await TrainingSession.get(training_session_id)
                 if not training_session:
-                    print(f"Training session {training_session_id} not found")
-                    await notification.delete()  # Видаляємо сповіщення якщо тренування не знайдено
+                    print(f"Training session {training_session_id} not found, deactivating notification")
+                    notification.is_active = False
+                    await notification.save()
                     continue
                     
                 if not training_session.completed:
                     print(f"Training session {training_session_id} is not completed, skipping notification")
                     continue
                     
+                # Send the notification
                 await self.bot.send_message(
                     chat_id=notification.user_id,
                     text=await get_template("after_training_quiz_intro"),
@@ -280,11 +300,10 @@ class BotScheduler:
                     parse_mode="HTML",
                 )
                 
-                # Позначаємо як відправлено
-                notification.system_data["sent"] = True
-                await notification.save()
+                # Delete the notification after sending (one-time use)
+                await notification.delete()
                 
-                print(f"✅ Sent after-training notification to {notification.user_id}")
+                print(f"✅ Sent and deleted after-training notification to {notification.user_id}")
 
         except Exception as e:
             print(f"Failed to send after training notification: {e}")
@@ -413,11 +432,13 @@ class BotScheduler:
                 if notification_time != current_time_str:
                     continue
                 
+                print(f"DEBUG: Processing gym reminder for {notification.user_id} at {notification_time}")
                 local_date = current_time.date()
                 start_local = datetime.combine(local_date, datetime.min.time(), tzinfo=zone_info)
                 end_local = start_local + timedelta(days=1)
                 start_utc = start_local.astimezone(ZoneInfo("UTC"))
                 end_utc = end_local.astimezone(ZoneInfo("UTC"))
+                print(f"DEBUG: Local start {start_local}, end {end_local}, UTC start {start_utc}, end {end_utc}")
 
                 existing_session = await TrainingSession.find_one(
                     {
@@ -446,6 +467,7 @@ class BotScheduler:
                 else:
                     last_date = None
                 if last_date == current_time.date():
+                    print(f"Skipping gym reminder for {notification.user_id}: already sent today")
                     continue
                 
                 # Відправляємо нагадування

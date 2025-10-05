@@ -208,7 +208,19 @@ async def process_training_goal(
         # Set user as verified and save
         user.is_verified = True
         await user.save()
-        
+
+        # Create a template after training notification to store user's preferred time
+        # This will be used as a template when creating actual notifications after training
+        template_notification = Notification(
+            user_id=str(user_telegram_id),
+            notification_time="15:00",  # Default time - user can change via web app
+            notification_text="Шаблон сповіщення після тренування",
+            notification_type=NotificationType.AFTER_TRAINING_NOTIFICATION,
+            is_active=False,  # Template, never active
+            system_data={"is_template": True}  # Mark as template
+        )
+        await template_notification.save()
+
         # Complete the setup and go to main menu
         await state.set_state(MainMenuState.main_menu)
         await message.answer(
@@ -218,8 +230,6 @@ async def process_training_goal(
             ),
             reply_markup=await get_main_menu_keyboard(),
         )
-
-
 @main_router.message(
     StateFilter(MainMenuState.main_menu), F.text == sync_get_template("training_menu_button")
 )

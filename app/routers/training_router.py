@@ -12,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 import app.text_constants as tc
 from app.routers.main_router import MainMenuState
 from app.states import TrainingState, AfterTrainingState
-from app.db.models import TrainingSession, Notification, User
+from app.db.models import TrainingSession, Notification, User, NotificationType
 from app.keyboards import get_main_menu_keyboard
 from app.config import settings
 import datetime
@@ -340,42 +340,53 @@ async def handle_do_you_have_any_pain(
 
     )
 
-    # Створюємо сповіщення для наступного дня о 15:00
+    # Create a new after training notification for this specific training session
     from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
     
     next_day = datetime.now(ZoneInfo("UTC")) + timedelta(days=1)
     next_day_date = next_day.date()
     
-    # Перевіряємо чи вже є сповіщення на наступний день для цього користувача
-    existing_notification = await Notification.find_one(
+    # Get user's default notification time from template notification or use 15:00
+    default_time = "15:00"
+    template_notification = await Notification.find_one(
         {
             "user_id": str(callback_query.from_user.id),
             "notification_type": "after_training_notification",
-            "system_data.scheduled_date": next_day_date.isoformat(),
-            "is_active": True
+            "system_data.is_template": True
         }
     )
-    
-    if existing_notification:
-        print(f"DEBUG: User {callback_query.from_user.id} already has after-training notification for {next_day_date}")
-        # Не створюємо нове сповіщення, якщо вже є
+    if template_notification:
+        default_time = template_notification.notification_time
     else:
-        # Створюємо нове сповіщення тільки якщо його ще немає
-        after_training_notification = Notification(
+        # Create template if it doesn't exist (for existing users)
+        template_notification = Notification(
             user_id=str(callback_query.from_user.id),
-            notification_time="15:00",  # Час для наступного дня
-            system_data={
-                "training_session_id": str(training_session.id),
-                "scheduled_date": next_day_date.isoformat(),  # Дата коли має відправитись
-                "sent": False  # Прапорець чи відправлено
-            },
-            notification_text="Опитування після тренування",
-            notification_type="after_training_notification",
+            notification_time="15:00",
+            notification_text="Шаблон сповіщення після тренування",
+            notification_type=NotificationType.AFTER_TRAINING_NOTIFICATION,
+            is_active=False,
+            system_data={"is_template": True}
         )
-        
-        await after_training_notification.save()
-        print(f"DEBUG: Created after-training notification for user {callback_query.from_user.id} on {next_day_date}")
+        await template_notification.save()
+        print(f"Created template notification for existing user {callback_query.from_user.id}")
+    
+    # Create a new notification for this specific training session
+    after_training_notification = Notification(
+        user_id=str(callback_query.from_user.id),
+        notification_time=default_time,
+        notification_text="Опитування після тренування",
+        notification_type=NotificationType.AFTER_TRAINING_NOTIFICATION,
+        is_active=True,
+        system_data={
+            "training_session_id": str(training_session.id),
+            "scheduled_date": next_day_date.isoformat(),
+            "sent": False,
+            "created_for_training": str(training_session.id)  # Для ідентифікації в адмінці
+        }
+    )
+    await after_training_notification.save()
+    print(f"DEBUG: Created new after-training notification for user {callback_query.from_user.id} on {next_day_date} for training {training_session.id}")
 
     # Remove any existing training time notifications for user
     training_time_notifications = await Notification.find(
@@ -523,26 +534,8 @@ async def handle_stress_level(callback_query: CallbackQuery, state: FSMContext) 
     training_session.stress_level = stress_level
     await training_session.save()
 
-    # Видаляємо ВСІ сповіщення після тренування для цього користувача на цей день
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    
-    current_date = datetime.now(ZoneInfo("UTC")).date()
-    
-    notifications_to_delete = await Notification.find(
-        {
-            "notification_type": "after_training_notification",
-            "user_id": str(callback_query.from_user.id),
-            "system_data.scheduled_date": current_date.isoformat()
-        }
-    ).to_list()
-    
-    for notification in notifications_to_delete:
-        await notification.delete()
-        print(f"Deleted after-training notification {notification.id} for user {callback_query.from_user.id}")
-    
-    if notifications_to_delete:
-        print(f"Deleted {len(notifications_to_delete)} after-training notifications for user {callback_query.from_user.id} on {current_date}")
+    # After training quiz completed - notification will be automatically deleted by scheduler
+    print(f"After-training quiz completed for user {callback_query.from_user.id}")
 
     await callback_query.message.answer(
         text=await get_template("thanks_for_your_training_feedback"),

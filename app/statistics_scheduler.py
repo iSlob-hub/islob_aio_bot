@@ -126,7 +126,7 @@ class StatisticsScheduler:
         # Відправка тижневої статистики: кожного понеділка о 09:00
         self.scheduler.add_job(
             self.send_weekly_statistics_to_users,
-            trigger=CronTrigger(day_of_week=0, hour=17, minute=10),  # Понеділок = 0
+            trigger=CronTrigger(hour=14, minute=51),  # Понеділок = 0
             id='send_weekly_statistics',
             name='Відправка тижневої статистики користувачам',
             replace_existing=True

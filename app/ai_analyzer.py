@@ -217,7 +217,7 @@ class StatisticsAnalyzer:
                     {"role": "system", "content": self.system_instruction},
                     {"role": "user", "content": formatted_stats}
                 ],
-                temperature=0.4
+                temperature=0.5
             )
             
             # Отримуємо відповідь
