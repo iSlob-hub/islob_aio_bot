@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.13
 
 # Set working directory
 WORKDIR /app
@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
+    libatspi2.0-0 \
     libc6 \
     libcairo2 \
     libcups2 \
@@ -36,7 +37,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpci3 \
     libstdc++6 \
     libu2f-udev \
-    libvpx7 \
     libwayland-client0 \
     libwayland-server0 \
     libx11-6 \
@@ -50,6 +50,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxfixes3 \
     libxi6 \
     libxkbcommon0 \
+    libxinerama1 \
     libxrandr2 \
     libxrender1 \
     libxshmfence1 \
