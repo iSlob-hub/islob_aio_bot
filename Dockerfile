@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     libdrm2 \
     libexpat1 \
     libfontconfig1 \
+    libgbm1 \
     libgcc-s1 \
     libglib2.0-0 \
     libgtk-3-0 \
@@ -47,7 +48,8 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers (without --with-deps to avoid font issues)
+# Install Playwright and its dependencies
+RUN playwright install-deps chromium
 RUN playwright install chromium
 
 # Copy application code
