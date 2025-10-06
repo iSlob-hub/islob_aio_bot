@@ -6,3 +6,5 @@ logs/
 statistics_images/
 .DS_Store
 *default.instructions.md
+extracted_ai_analyses/
+test_message.txt

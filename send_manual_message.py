@@ -1,8 +1,8 @@
 import asyncio
 import sys
 import os
+import glob
 from aiogram import Bot
-from app.config import settings
 from app.db.database import init_db
 from app.db.models import User
 from dotenv import load_dotenv
@@ -35,6 +35,32 @@ def read_message_from_file(file_path: str) -> str:
     except Exception as e:
         return f"❌ Помилка читання файлу {file_path}: {e}"
 
+def get_files_from_path(path: str) -> list:
+    """
+    Отримує список файлів з вказаного шляху (файл або директорія)
+    
+    Args:
+        path: Шлях до файлу або директорії
+        
+    Returns:
+        Список шляхів до файлів
+    """
+    if not os.path.exists(path):
+        return []
+    
+    if os.path.isfile(path):
+        return [path]
+    
+    if os.path.isdir(path):
+        files = []
+        # Шукаємо всі файли в директорії (не рекурсивно)
+        for file_path in glob.glob(os.path.join(path, '*')):
+            if os.path.isfile(file_path):
+                files.append(file_path)
+        return sorted(files)
+    
+    return []
+
 async def send_message_to_user(user_id: str, message: str, parse_mode: str = "HTML"):
     """
     Відправляє повідомлення конкретному користувачу
@@ -60,6 +86,68 @@ async def send_message_to_user(user_id: str, message: str, parse_mode: str = "HT
     finally:
         await bot.session.close()
 
+async def send_files_to_user(user_id: str, path: str, parse_mode: str = "HTML"):
+    """
+    Відправляє файл(и) користувачу - якщо path це файл, відправляє його,
+    якщо це директорія, відправляє всі файли з неї окремими повідомленнями
+    
+    Args:
+        user_id: Telegram ID користувача
+        path: Шлях до файлу або директорії
+        parse_mode: Режим парсингу
+    
+    Returns:
+        Tuple (success_count, total_count)
+    """
+    files = get_files_from_path(path)
+    
+    if not files:
+        print(f"❌ Файли не знайдено за шляхом: {path}")
+        return 0, 0
+    
+    print(f"📁 Знайдено {len(files)} файл(ів) для відправки:")
+    for file_path in files:
+        print(f"  📄 {os.path.basename(file_path)}")
+    
+    if len(files) > 1:
+        confirm = input(f"⚠️ Відправити {len(files)} файл(ів) користувачу {user_id}? (yes/no): ")
+        if confirm.lower() not in ['yes', 'y', 'так', 'т']:
+            print("❌ Відправку скасовано")
+            return 0, len(files)
+    
+    bot = Bot(token=os.environ.get("BOT_TOKEN"))
+    success_count = 0
+    
+    try:
+        for i, file_path in enumerate(files, 1):
+            message = read_message_from_file(file_path)
+            
+            if message.startswith("❌"):
+                print(f"❌ {i}/{len(files)} - {os.path.basename(file_path)}: {message}")
+                continue
+            
+            try:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=message,
+                    parse_mode=parse_mode
+                )
+                success_count += 1
+                print(f"✅ {i}/{len(files)} - Відправлено {os.path.basename(file_path)}")
+                
+                # Невелика затримка між повідомленнями
+                if len(files) > 1:
+                    await asyncio.sleep(0.2)
+                    
+            except Exception as e:
+                print(f"❌ {i}/{len(files)} - Помилка відправки {os.path.basename(file_path)}: {e}")
+                
+    finally:
+        await bot.session.close()
+    
+    print(f"📊 Результат: {success_count}/{len(files)} файлів відправлено успішно")
+    return success_count, len(files)
+
 async def send_message_by_username(username: str, message: str, parse_mode: str = "HTML"):
     """
     Відправляє повідомлення користувачу за username
@@ -82,6 +170,31 @@ async def send_message_by_username(username: str, message: str, parse_mode: str 
     
     return await send_message_to_user(user.telegram_id, message, parse_mode)
 
+async def send_files_by_username(username: str, path: str, parse_mode: str = "HTML"):
+    """
+    Відправляє файл(и) користувачу за username
+    
+    Args:
+        username: Username користувача (без @)
+        path: Шлях до файлу або директорії
+        parse_mode: Режим парсингу
+    
+    Returns:
+        Tuple (success_count, total_count)
+    """
+    await init_db()
+    
+    # Шукаємо користувача за username
+    user = await User.find_one(User.telegram_username == username)
+    
+    if not user:
+        print(f"❌ Користувача з username '{username}' не знайдено в базі даних")
+        return 0, 0
+    
+    print(f"👤 Знайдено користувача: {user.full_name} (@{user.telegram_username}) - ID: {user.telegram_id}")
+    
+    return await send_files_to_user(user.telegram_id, path, parse_mode)
+
 async def list_users(limit: int = 20, active_only: bool = False):
     """
     Показує список користувачів
@@ -96,7 +209,7 @@ async def list_users(limit: int = 20, active_only: bool = False):
     
     query = User.find()
     if active_only:
-        query = query.find(User.is_active == True)
+        query = query.find(User.is_active)
     
     users = await query.limit(limit).to_list()
     
@@ -133,7 +246,7 @@ async def send_broadcast_message(message: str, active_only: bool = True, parse_m
     
     query = User.find()
     if active_only:
-        query = query.find(User.is_active == True)
+        query = query.find(User.is_active)
     
     users = await query.to_list()
     
@@ -191,11 +304,11 @@ def print_help():
 
 1. Надіслати повідомлення за Telegram ID:
    python send_manual_message.py send <telegram_id> "<message>"
-   python send_manual_message.py send_file <telegram_id> <file_path>
+   python send_manual_message.py send_file <telegram_id> <file_or_directory_path>
    
 2. Надіслати повідомлення за username:
    python send_manual_message.py send_by_username <username> "<message>"
-   python send_manual_message.py send_file_by_username <username> <file_path>
+   python send_manual_message.py send_file_by_username <username> <file_or_directory_path>
    
 3. Показати список користувачів:
    python send_manual_message.py list [limit] [active_only]
@@ -208,17 +321,21 @@ def print_help():
 
 python send_manual_message.py send 123456789 "Привіт! Це тестове повідомлення"
 python send_manual_message.py send_file 123456789 test_message.txt
+python send_manual_message.py send_file 123456789 messages_folder/
 python send_manual_message.py send_by_username johndoe "Привіт, Джон!"
 python send_manual_message.py send_file_by_username johndoe test_message.txt
+python send_manual_message.py send_file_by_username johndoe analyses_folder/
 python send_manual_message.py list 10 true
 python send_manual_message.py broadcast "Важливе оновлення для всіх!" true
 python send_manual_message.py broadcast_file test_message.txt true
 
 💡 Підказки:
 - Повідомлення підтримують HTML форматування
-- Для розсилки буде запит на підтвердження
+- Для розсилки та множинних файлів буде запит на підтвердження
 - active_only: true/false (за замовчуванням true для розсилки)
 - Файли мають бути в UTF-8 кодуванні
+- Якщо вказана директорія, відправляються всі файли з неї окремими повідомленнями
+- Файли з директорії відправляються в алфавітному порядку
 """)
 
 if __name__ == "__main__":
@@ -243,19 +360,17 @@ if __name__ == "__main__":
     elif command == "send_file":
         if len(sys.argv) < 4:
             print("❌ Недостатньо аргументів для команди send_file")
-            print("Використання: python send_manual_message.py send_file <telegram_id> <file_path>")
+            print("Використання: python send_manual_message.py send_file <telegram_id> <file_or_directory_path>")
             sys.exit(1)
         
         user_id = sys.argv[2]
-        file_path = sys.argv[3]
+        path = sys.argv[3]
         
-        message = read_message_from_file(file_path)
-        if message.startswith("❌"):
-            print(message)
+        print(f"📤 Відправка файл(ів) з {path} користувачу {user_id}...")
+        success, total = asyncio.run(send_files_to_user(user_id, path))
+        
+        if total == 0:
             sys.exit(1)
-        
-        print(f"📤 Відправка повідомлення з файлу користувачу {user_id}...")
-        asyncio.run(send_message_to_user(user_id, message))
     
     elif command == "send_by_username":
         if len(sys.argv) < 4:
@@ -272,19 +387,17 @@ if __name__ == "__main__":
     elif command == "send_file_by_username":
         if len(sys.argv) < 4:
             print("❌ Недостатньо аргументів для команди send_file_by_username")
-            print("Використання: python send_manual_message.py send_file_by_username <username> <file_path>")
+            print("Використання: python send_manual_message.py send_file_by_username <username> <file_or_directory_path>")
             sys.exit(1)
         
         username = sys.argv[2].replace("@", "")  # Видаляємо @ якщо є
-        file_path = sys.argv[3]
+        path = sys.argv[3]
         
-        message = read_message_from_file(file_path)
-        if message.startswith("❌"):
-            print(message)
+        print(f"📤 Відправка файл(ів) з {path} користувачу @{username}...")
+        success, total = asyncio.run(send_files_by_username(username, path))
+        
+        if total == 0:
             sys.exit(1)
-        
-        print(f"📤 Відправка повідомлення з файлу користувачу @{username}...")
-        asyncio.run(send_message_by_username(username, message))
     
     elif command == "list":
         limit = int(sys.argv[2]) if len(sys.argv) > 2 else 20
