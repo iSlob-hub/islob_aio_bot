@@ -15,7 +15,9 @@ class StatisticsScheduler:
     """Клас для планування автоматичної генерації статистики"""
     
     def __init__(self):
-        self.scheduler = AsyncIOScheduler()
+        self.scheduler = AsyncIOScheduler(
+            timezone="Europe/Kyiv",
+        )
         self.stats_generator = StatisticsGenerator()
         self.image_generator = StatisticsImageGenerator()
         self.bot = None
@@ -126,7 +128,7 @@ class StatisticsScheduler:
         # Відправка тижневої статистики: кожного понеділка о 09:00
         self.scheduler.add_job(
             self.send_weekly_statistics_to_users,
-            trigger=CronTrigger(day_of_week=0,hour=23, minute=58),  # Понеділок = 0
+            trigger=CronTrigger(day_of_week=1,hour=0, minute=3),  # Понеділок = 0
             id='send_weekly_statistics',
             name='Відправка тижневої статистики користувачам',
             replace_existing=True
