@@ -419,7 +419,7 @@ class BotScheduler:
         try:
             current_time = datetime.now(tz=zone_info)
             current_time_str = current_time.strftime("%H:%M")
-            
+
             notifications = await Notification.find(
                 {
                     "notification_type": "gym_reminder_notification",
@@ -427,9 +427,17 @@ class BotScheduler:
                 }
             ).to_list()
 
+            print(
+                f"DEBUG: Checking gym reminders at {current_time_str}, found {len(notifications)} active notifications"
+            )
+
             for notification in notifications:
                 notification_time = notification.notification_time
                 if notification_time != current_time_str:
+                    print(
+                        "DEBUG: Skipping gym reminder for "
+                        f"{notification.user_id}: scheduled {notification_time}, current {current_time_str}"
+                    )
                     continue
                 
                 print(f"DEBUG: Processing gym reminder for {notification.user_id} at {notification_time}")
@@ -451,12 +459,18 @@ class BotScheduler:
                 )
 
                 if existing_session is not None:
-                    print(f"Skipping gym reminder for {notification.user_id}: session exists today")
+                    print(
+                        "DEBUG: Skipping gym reminder for "
+                        f"{notification.user_id}: session exists today (session_id={existing_session.id})"
+                    )
                     continue
             
                 if not notification.system_data:
                     notification.system_data = {}
                     await notification.save()
+                    print(
+                        f"DEBUG: Created empty system_data for notification {notification.id}"
+                    )
                     
                 last_sent_date = notification.system_data.get("last_sent_date")
                 if last_sent_date is not None:
@@ -464,13 +478,22 @@ class BotScheduler:
                         last_date = last_sent_date.date()
                     except AttributeError:
                         last_date = last_sent_date
+                    print(
+                        f"DEBUG: Last sent date for {notification.user_id} is {last_date}"
+                    )
                 else:
                     last_date = None
+                    print(
+                        f"DEBUG: No last sent date recorded for {notification.user_id}"
+                    )
                 if last_date == current_time.date():
                     print(f"Skipping gym reminder for {notification.user_id}: already sent today")
                     continue
                 
                 # Відправляємо нагадування
+                print(
+                    f"DEBUG: Sending gym reminder to {notification.user_id} using template gym_reminder_notification_text"
+                )
                 await self.bot.send_message(
                     chat_id=notification.user_id,
                     text=await get_template("gym_reminder_notification_text"),
