@@ -5,7 +5,13 @@ from apscheduler.jobstores.mongodb import MongoDBJobStore
 from apscheduler.executors.asyncio import AsyncIOExecutor
 from app.config import settings
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from app.db.models import Notification, User, MorningQuiz, TrainingSession
+from app.db.models import (
+    Notification,
+    NotificationType,
+    User,
+    MorningQuiz,
+    TrainingSession,
+)
 from app.statistics_scheduler import statistics_scheduler
 from zoneinfo import ZoneInfo
 from croniter import croniter
@@ -121,7 +127,7 @@ class BotScheduler:
                 self.send_gym_reminder_notifications,
                 "interval",
                 minutes=1,
-                id="gym_reminder_notifications",
+                id="send_gym_reminder_notifications",
                 replace_existing=True,
             )
 
@@ -415,10 +421,14 @@ class BotScheduler:
             print(f"Failed to send custom notifications: {e}")
 
     async def send_gym_reminder_notifications(self):
-        """Send gym reminder notifications based on morning quiz responses"""
         try:
             current_time = datetime.now(tz=zone_info)
             current_time_str = current_time.strftime("%H:%M")
+            notifications = await Notification.find(
+                {
+                    "is_active": True,
+                }
+            ).to_list()
 
             notifications = await Notification.find(
                 {
@@ -426,27 +436,59 @@ class BotScheduler:
                     "is_active": True,
                 }
             ).to_list()
+            logger.debug(f"[GYM_REMINDER] Found {len(notifications)} gym reminder notifications")
 
-            print(
-                f"DEBUG: Checking gym reminders at {current_time_str}, found {len(notifications)} active notifications"
+            logger.debug(
+                f"[GYM_REMINDER] Checking gym reminders at current time {current_time_str}",
+                extra={
+                    "context": {
+                        "current_time": current_time_str,
+                        "active_notifications": len(notifications),
+                    }
+                },
             )
 
             for notification in notifications:
                 notification_time = notification.notification_time
                 if notification_time != current_time_str:
-                    print(
-                        "DEBUG: Skipping gym reminder for "
-                        f"{notification.user_id}: scheduled {notification_time}, current {current_time_str}"
+                    logger.debug(
+                        "[GYM_REMINDER] Skipping gym reminder due to time mismatch",
+                        extra={
+                            "context": {
+                                "user_id": notification.user_id,
+                                "scheduled_time": notification_time,
+                                "current_time": current_time_str,
+                            }
+                        },
                     )
                     continue
                 
-                print(f"DEBUG: Processing gym reminder for {notification.user_id} at {notification_time}")
+                logger.debug(
+                    "[GYM_REMINDER] Processing gym reminder",
+                    extra={
+                        "context": {
+                            "user_id": notification.user_id,
+                            "notification_time": notification_time,
+                        }
+                    },
+                )
                 local_date = current_time.date()
                 start_local = datetime.combine(local_date, datetime.min.time(), tzinfo=zone_info)
                 end_local = start_local + timedelta(days=1)
                 start_utc = start_local.astimezone(ZoneInfo("UTC"))
                 end_utc = end_local.astimezone(ZoneInfo("UTC"))
-                print(f"DEBUG: Local start {start_local}, end {end_local}, UTC start {start_utc}, end {end_utc}")
+                logger.debug(
+                    "[GYM_REMINDER] Computed reminder window",
+                    extra={
+                        "context": {
+                            "user_id": notification.user_id,
+                            "start_local": start_local.isoformat(),
+                            "end_local": end_local.isoformat(),
+                            "start_utc": start_utc.isoformat(),
+                            "end_utc": end_utc.isoformat(),
+                        }
+                    },
+                )
 
                 existing_session = await TrainingSession.find_one(
                     {
@@ -459,17 +501,28 @@ class BotScheduler:
                 )
 
                 if existing_session is not None:
-                    print(
-                        "DEBUG: Skipping gym reminder for "
-                        f"{notification.user_id}: session exists today (session_id={existing_session.id})"
+                    logger.debug(
+                        "[GYM_REMINDER] Skipping gym reminder because session exists",
+                        extra={
+                            "context": {
+                                "user_id": notification.user_id,
+                                "session_id": existing_session.id,
+                            }
+                        },
                     )
                     continue
             
                 if not notification.system_data:
                     notification.system_data = {}
                     await notification.save()
-                    print(
-                        f"DEBUG: Created empty system_data for notification {notification.id}"
+                    logger.debug(
+                        "[GYM_REMINDER] Initialized system_data for notification",
+                        extra={
+                            "context": {
+                                "notification_id": notification.id,
+                                "user_id": notification.user_id,
+                            }
+                        },
                     )
                     
                 last_sent_date = notification.system_data.get("last_sent_date")
@@ -478,21 +531,48 @@ class BotScheduler:
                         last_date = last_sent_date.date()
                     except AttributeError:
                         last_date = last_sent_date
-                    print(
-                        f"DEBUG: Last sent date for {notification.user_id} is {last_date}"
+                    logger.debug(
+                        "[GYM_REMINDER] Loaded last sent date",
+                        extra={
+                            "context": {
+                                "user_id": notification.user_id,
+                                "last_sent_date": last_date.isoformat()
+                                if hasattr(last_date, "isoformat")
+                                else str(last_date),
+                            }
+                        },
                     )
                 else:
                     last_date = None
-                    print(
-                        f"DEBUG: No last sent date recorded for {notification.user_id}"
+                    logger.debug(
+                        "[GYM_REMINDER] No last sent date recorded",
+                        extra={
+                            "context": {
+                                "user_id": notification.user_id,
+                            }
+                        },
                     )
                 if last_date == current_time.date():
-                    print(f"Skipping gym reminder for {notification.user_id}: already sent today")
+                    logger.debug(
+                        "[GYM_REMINDER] Skipping gym reminder already sent today",
+                        extra={
+                            "context": {
+                                "user_id": notification.user_id,
+                                "last_sent_date": current_time.date().isoformat(),
+                            }
+                        },
+                    )
                     continue
                 
                 # Відправляємо нагадування
-                print(
-                    f"DEBUG: Sending gym reminder to {notification.user_id} using template gym_reminder_notification_text"
+                logger.info(
+                    "[GYM_REMINDER] Sending gym reminder",
+                    extra={
+                        "context": {
+                            "user_id": notification.user_id,
+                            "template": "gym_reminder_notification_text",
+                        }
+                    },
                 )
                 await self.bot.send_message(
                     chat_id=notification.user_id,
@@ -501,10 +581,18 @@ class BotScheduler:
                 
                 await notification.delete()
                 
-                print(f"✅ Sent gym reminder to {notification.user_id} at {notification_time}")
+                logger.info(
+                    "[GYM_REMINDER] Gym reminder sent and notification deleted",
+                    extra={
+                        "context": {
+                            "user_id": notification.user_id,
+                            "notification_time": notification_time,
+                        }
+                    },
+                )
 
-        except Exception as e:
-            print(f"Failed to send gym reminder notifications: {e}")
+        except Exception:
+            logger.exception("Failed to send gym reminder notifications")
 
 
     async def update_payment_days(self):
