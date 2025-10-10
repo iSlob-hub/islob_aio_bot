@@ -15,7 +15,7 @@ from app.routers.main_router import MainMenuState
 from app.db.models import MorningQuiz, Notification, NotificationType
 import datetime
 from app.keyboards import get_main_menu_keyboard
-from app.db.templates_utils import get_template, format_template
+from app.utils.text_templates import get_template, format_template
 
 
 async def create_gym_reminder_notification(user_id: str, gym_time: datetime.datetime):
@@ -331,8 +331,8 @@ async def handle_weight(message: Message, state: FSMContext):
         text= await format_template("morning_quiz_step5",
             how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
             sleep_time=morning_quiz.how_many_hours_of_sleep,
-            is_going_to_gym=morning_quiz.is_going_to_gym,
-            gym_attendance_time_text=morning_quiz.gym_attendance_time.strftime("%H:%M") + "\n" if morning_quiz.is_going_to_gym else "",
+            is_going_to_gym="Так" if morning_quiz.is_going_to_gym else "Ні",
+            gym_attendance_time=morning_quiz.gym_attendance_time.strftime("%H:%M") if morning_quiz.is_going_to_gym else "",
             weight=weight
         ),
         parse_mode="HTML", reply_markup=await get_main_menu_keyboard()

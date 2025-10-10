@@ -40,6 +40,7 @@ class NotificationResponse(BaseModel):
     created_at: datetime
     cron_human_readable: Optional[str] = None
     user_info: Optional[dict] = None
+    scheduled_date: Optional[str] = None  # For after training notifications
 
 
 class CreateNotificationRequest(BaseModel):
@@ -137,6 +138,13 @@ async def get_user_notifications(
             if user_id.lower() == "all" and notification.user_id in users:
                 user_info = {"name": users[notification.user_id]}
                 
+            # Extract scheduled_date from system_data for after training notifications
+            scheduled_date = None
+            if (notification.notification_type.value == "after_training_notification" and 
+                notification.system_data and 
+                "scheduled_date" in notification.system_data):
+                scheduled_date = notification.system_data["scheduled_date"]
+            
             notification_data = NotificationResponse(
                 id=str(notification.id),
                 user_id=notification.user_id,
@@ -150,7 +158,8 @@ async def get_user_notifications(
                 is_active=notification.is_active,
                 created_at=notification.created_at,
                 cron_human_readable=cron_to_human_readable(notification.custom_notification_cron) if notification.custom_notification_cron else None,
-                user_info=user_info  # Додаємо інформацію про користувача
+                user_info=user_info,  # Додаємо інформацію про користувача
+                scheduled_date=scheduled_date  # Додаємо дату відправки
             )
             result.append(notification_data)
         
@@ -215,7 +224,8 @@ async def create_notification(
             system_data=notification.system_data,
             is_active=notification.is_active,
             created_at=notification.created_at,
-            cron_human_readable=cron_to_human_readable(notification.custom_notification_cron) if notification.custom_notification_cron else None
+            cron_human_readable=cron_to_human_readable(notification.custom_notification_cron) if notification.custom_notification_cron else None,
+            scheduled_date=None
         )
         
     except Exception as e:
@@ -236,6 +246,13 @@ async def toggle_notification(
         notification.is_active = not notification.is_active
         await notification.save()
         
+        # Extract scheduled_date for after training notifications
+        scheduled_date = None
+        if (notification.notification_type.value == "after_training_notification" and 
+            notification.system_data and 
+            "scheduled_date" in notification.system_data):
+            scheduled_date = notification.system_data["scheduled_date"]
+        
         return NotificationResponse(
             id=str(notification.id),
             user_id=notification.user_id,
@@ -248,7 +265,8 @@ async def toggle_notification(
             system_data=notification.system_data,
             is_active=notification.is_active,
             created_at=notification.created_at,
-            cron_human_readable=cron_to_human_readable(notification.custom_notification_cron) if notification.custom_notification_cron else None
+            cron_human_readable=cron_to_human_readable(notification.custom_notification_cron) if notification.custom_notification_cron else None,
+            scheduled_date=scheduled_date
         )
         
     except Exception as e:
@@ -332,6 +350,13 @@ async def update_notification(
         
         await notification.save()
         
+        # Extract scheduled_date for after training notifications
+        scheduled_date = None
+        if (notification.notification_type.value == "after_training_notification" and 
+            notification.system_data and 
+            "scheduled_date" in notification.system_data):
+            scheduled_date = notification.system_data["scheduled_date"]
+        
         return NotificationResponse(
             id=str(notification.id),
             user_id=notification.user_id,
@@ -344,7 +369,8 @@ async def update_notification(
             system_data=notification.system_data,
             is_active=notification.is_active,
             created_at=notification.created_at,
-            cron_human_readable=cron_to_human_readable(notification.custom_notification_cron) if notification.custom_notification_cron else None
+            cron_human_readable=cron_to_human_readable(notification.custom_notification_cron) if notification.custom_notification_cron else None,
+            scheduled_date=scheduled_date
         )
         
     except Exception as e:

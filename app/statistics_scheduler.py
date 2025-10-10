@@ -15,7 +15,9 @@ class StatisticsScheduler:
     """Клас для планування автоматичної генерації статистики"""
     
     def __init__(self):
-        self.scheduler = AsyncIOScheduler()
+        self.scheduler = AsyncIOScheduler(
+            timezone="Europe/Kyiv",
+        )
         self.stats_generator = StatisticsGenerator()
         self.image_generator = StatisticsImageGenerator()
         self.bot = None
@@ -115,31 +117,31 @@ class StatisticsScheduler:
         # )
         
         # Місячна статистика: кожного понеділка о 08:30 (перевірка всередині функції)
-        self.scheduler.add_job(
-            self.generate_monthly_statistics,
-            trigger=CronTrigger(day_of_week=0, hour=8, minute=30),  # Понеділок = 0
-            id='monthly_statistics',
-            name='Генерація місячної статистики (4-й понеділок)',
-            replace_existing=True
-        )
+        # self.scheduler.add_job(
+        #     self.generate_monthly_statistics,
+        #     trigger=CronTrigger(day_of_week=0, hour=8, minute=30),  # Понеділок = 0
+        #     id='monthly_statistics',
+        #     name='Генерація місячної статистики (4-й понеділок)',
+        #     replace_existing=True
+        # )
         
         # Відправка тижневої статистики: кожного понеділка о 09:00
         self.scheduler.add_job(
             self.send_weekly_statistics_to_users,
-            trigger=CronTrigger(day_of_week=0, hour=17, minute=10),  # Понеділок = 0
+            trigger=CronTrigger(day_of_week=1,hour=9, minute=0),  # Понеділок = 0
             id='send_weekly_statistics',
             name='Відправка тижневої статистики користувачам',
             replace_existing=True
         )
         
         # Відправка місячної статистики: кожного понеділка о 09:30 (перевірка всередині функції)
-        self.scheduler.add_job(
-            self.send_monthly_statistics_to_users,
-            trigger=CronTrigger(day_of_week=0, hour=9, minute=30),  # Понеділок = 0
-            id='send_monthly_statistics',
-            name='Відправка місячної статистики користувачам',
-            replace_existing=True
-        )
+        # self.scheduler.add_job(
+        #     self.send_monthly_statistics_to_users,
+        #     trigger=CronTrigger(day_of_week=0, hour=9, minute=30),  # Понеділок = 0
+        #     id='send_monthly_statistics',
+        #     name='Відправка місячної статистики користувачам',
+        #     replace_existing=True
+        # )
         
         self.scheduler.start()
         logger.info("Планувальник статистики запущено")
