@@ -15,7 +15,7 @@ from app.routers.main_router import MainMenuState
 from app.db.models import MorningQuiz, Notification, NotificationType
 import datetime
 from app.keyboards import get_main_menu_keyboard
-from app.db.templates_utils import get_template, format_template
+from app.utils.text_templates import get_template, format_template
 
 
 async def create_gym_reminder_notification(user_id: str, gym_time: datetime.datetime):
