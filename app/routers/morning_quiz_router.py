@@ -326,17 +326,27 @@ async def handle_weight(message: Message, state: FSMContext):
     morning_quiz = await MorningQuiz.get(morning_quiz_id)
     morning_quiz.weight = weight
     await morning_quiz.save()
-
-    await message.answer(
-        text= await format_template("morning_quiz_step5",
-            how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
-            sleep_time=morning_quiz.how_many_hours_of_sleep,
-            is_going_to_gym="Так" if morning_quiz.is_going_to_gym else "Ні",
-            gym_attendance_time=morning_quiz.gym_attendance_time.strftime("%H:%M") if morning_quiz.is_going_to_gym else "",
-            weight=weight
-        ),
-        parse_mode="HTML", reply_markup=await get_main_menu_keyboard()
-    )
+    if morning_quiz.is_going_to_gym:
+        await message.answer(
+            text= await format_template("morning_quiz_step5",
+                how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
+                sleep_time=morning_quiz.how_many_hours_of_sleep,
+                is_going_to_gym="Так",
+                gym_attendance_time=morning_quiz.gym_attendance_time.strftime("%H:%M"),
+                weight=weight
+            ),
+            parse_mode="HTML", reply_markup=await get_main_menu_keyboard()
+        )
+    else:
+        await message.answer(
+            text= await format_template("morning_quiz_step51",
+                how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
+                sleep_time=morning_quiz.how_many_hours_of_sleep,
+                is_going_to_gym="Ні",
+                weight=weight
+            ),
+            parse_mode="HTML", reply_markup=await get_main_menu_keyboard()
+        )
     
     morning_quiz.completed = True
     await morning_quiz.save()
