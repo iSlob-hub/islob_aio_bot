@@ -130,7 +130,6 @@ class StatisticsAnalyzer:
                 analysis_data["metrics"][metric_type] = {
                     "chart_type": metric_data.get("chart_type"),
                     "average": metric_data.get("average"),
-                    "trend": metric_data.get("trend"),
                     "data_points_count": len(metric_data.get("data_points", [])),
                     "data_points": metric_data.get("data_points", [])
                 }
@@ -180,7 +179,6 @@ class StatisticsAnalyzer:
             
             formatted_text += f"\n{metric_title}:\n"
             formatted_text += f"- Середнє значення: {metric_data.get('average')}\n"
-            formatted_text += f"- Тренд: {metric_data.get('trend')}\n"
             formatted_text += f"- Кількість замірів: {metric_data.get('data_points_count')}\n"
             
             if metric_name == "sleep_data":
@@ -194,7 +192,7 @@ class StatisticsAnalyzer:
             data_points = metric_data.get('data_points', [])
             if data_points:
                 formatted_text += "- Останні заміри:\n"
-                for point in data_points[-5:]:
+                for point in data_points[-7:]:
                     formatted_text += f"  * {point.get('date')}: {point.get('value')}\n"
         
         formatted_text += "\nБудь ласка, проведи детальний аналіз цих даних, виділи ключові тренди, досягнення та рекомендації для покращення результатів."

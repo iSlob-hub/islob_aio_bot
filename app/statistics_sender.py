@@ -265,6 +265,13 @@ class StatisticsSender:
             for user in users:
                 try:
                     user_id = user.telegram_id
+                    
+                    account_age = (datetime.now() - user.created_at).days
+                    if account_age < 7:
+                        logger.info(f"Пропускаємо користувача {user_id}: обліковий запис створено {account_age} днів тому (потрібно мінімум 7)")
+                        results["total"] -= 1 
+                        continue
+                    
                     user_stats = stats_by_user.get(user_id)
                     
                     if period_type == PeriodType.WEEKLY:

@@ -37,7 +37,7 @@ async def create_stable_with_minor_issues_scenario():
     print(f"✅ Створено користувача: {test_user.full_name}")
     
     # Період (22 вересня 2025, 21:09)
-    start_date = datetime(2025, 9, 22, 21, 9, tzinfo=ZoneInfo("Europe/Kyiv"))
+    start_date = datetime(2025, 10, 6, 21, 9, tzinfo=ZoneInfo("Europe/Kyiv"))
     
     # Дані для стабільного тижня з невеликими проблемами (7 днів)
     daily_data = [

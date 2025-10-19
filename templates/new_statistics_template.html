@@ -423,13 +423,23 @@
         weightGradient.addColorStop(0, 'rgba(0, 191, 255, 0.6)');
         weightGradient.addColorStop(0.5, 'rgba(0, 191, 255, 0.3)');
         weightGradient.addColorStop(1, 'rgba(0, 191, 255, 0.0)');
-        const weights = sampleData.weight.values;
-        const minWeight = Math.min(...weights);
-        const maxWeight = Math.max(...weights);
-
-
-        const range = maxWeight - minWeight;
-        const padding = range * 0.4; // 20% запасу
+        
+        // Calculate Y-axis range for weight chart with proper handling of identical values
+        const weights = sampleData.weight.values.filter(v => v !== null);
+        let minWeight, maxWeight;
+        if (weights.length > 0) {
+            minWeight = Math.min(...weights);
+            maxWeight = Math.max(...weights);
+            const range = maxWeight - minWeight;
+            // If all values are the same, create a small range around the value
+            const padding = range > 0 ? range * 0.2 : Math.max(minWeight * 0.02, 0.5);
+            minWeight = minWeight - padding;
+            maxWeight = maxWeight + padding;
+        } else {
+            minWeight = 0;
+            maxWeight = 100;
+        }
+        
         const weightConfig = {
             type: 'line',
             data: {
@@ -465,16 +475,21 @@
                             color: '#555',
                             maxRotation: 0,
                             padding: 5
-                        },
+                        }
                     },
                     y: {
-                        min: minWeight - padding,
-                        max: maxWeight + padding,
+                        min: minWeight,
+                        max: maxWeight,
                         title: {
                             display: false,
                             text: 'Вага (кг)'
                         },
-                        
+                        grid: {
+                            display: true,
+                            color: 'rgba(200, 200, 200, 0.15)',
+                            borderDash: [5, 5],
+                            drawBorder: false
+                        },
                         ticks: {
                             font: { size: 18, weight: 'bold' },
                             color: '#555',
