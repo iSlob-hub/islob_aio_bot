@@ -484,6 +484,22 @@ class WebStatisticsGenerator:
         weightGradient.addColorStop(0.5, 'rgba(0, 191, 255, 0.3)');
         weightGradient.addColorStop(1, 'rgba(0, 191, 255, 0.0)');
         
+        // Calculate Y-axis range for weight chart with proper handling of identical values
+        const weights = sampleData.weight.values.filter(v => v !== null);
+        let minWeight, maxWeight;
+        if (weights.length > 0) {
+            minWeight = Math.min(...weights);
+            maxWeight = Math.max(...weights);
+            const range = maxWeight - minWeight;
+            // If all values are the same, create a small range around the value
+            const padding = range > 0 ? range * 0.2 : Math.max(minWeight * 0.02, 0.5);
+            minWeight = minWeight - padding;
+            maxWeight = maxWeight + padding;
+        } else {
+            minWeight = 0;
+            maxWeight = 100;
+        }
+        
         const weightConfig = {
             type: 'line',
             data: {
@@ -507,15 +523,50 @@ class WebStatisticsGenerator:
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
+                    x: {
+                        grid: {
+                            display: true,
+                            color: 'rgba(200, 200, 200, 0.15)',
+                            borderDash: [5, 5],
+                            drawBorder: false
+                        },
+                        ticks: {
+                            font: { size: 10 },
+                            color: '#888',
+                            maxRotation: 0,
+                            padding: 5
+                        }
+                    },
                     y: {
+                        min: minWeight,
+                        max: maxWeight,
                         title: {
                             display: false,
                             text: 'Вага (кг)'
+                        },
+                        grid: {
+                            display: true,
+                            color: 'rgba(200, 200, 200, 0.15)',
+                            borderDash: [5, 5],
+                            drawBorder: false
+                        },
+                        ticks: {
+                            font: { size: 10 },
+                            color: '#888',
+                            padding: 5
                         }
                     }
                 },
                 plugins: {
-                    legend: { display: false }
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        titleFont: { size: 16, weight: 'bold' },
+                        bodyFont: { size: 14, weight: 'bold' },
+                        padding: 10,
+                        cornerRadius: 5,
+                        displayColors: false
+                    }
                 }
             }
         };
@@ -585,6 +636,23 @@ class WebStatisticsGenerator:
         feelings_values = [feelings_data.get(date) for date in sorted_dates]
         weight_values = [weight_data.get(date) for date in sorted_dates]
         
+
+        if any(v is not None for v in weight_values):
+            # Find first non-None value
+            first_idx = next((i for i, v in enumerate(weight_values) if v is not None), None)
+            if first_idx is not None:
+                first_val = weight_values[first_idx]
+                # Fill before first real value
+                for i in range(0, first_idx):
+                    weight_values[i] = first_val
+                # Forward-fill the rest
+                last_val = first_val
+                for i in range(first_idx + 1, len(weight_values)):
+                    if weight_values[i] is None:
+                        weight_values[i] = last_val
+                    else:
+                        last_val = weight_values[i]
+        
         # Create the chart data structure
         chart_data = {
             "dates": sorted_dates,
@@ -631,7 +699,7 @@ class WebStatisticsGenerator:
         
         # Render the template
         html_content = template.render(charts=chart_data)
-        
+        logger.debug(f"Output path for HTML: {output_path}")
         # Save the HTML file if output_path is provided
         if output_path:
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -714,7 +782,8 @@ class WebStatisticsGenerator:
         finally:
             # Clean up the temporary HTML file
             try:
-                os.remove(html_path)
+                # os.remove(html_path)
+                pass
             except Exception as e:
                 logger.warning(f"Failed to remove temporary HTML file: {e}")
 

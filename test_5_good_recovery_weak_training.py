@@ -37,7 +37,7 @@ async def create_good_recovery_weak_training_scenario():
     print(f"✅ Створено користувача: {test_user.full_name}")
     
     # Період (22 вересня 2025, 21:36)
-    start_date = datetime(2025, 9, 22, 21, 36, tzinfo=ZoneInfo("Europe/Kyiv"))
+    start_date = datetime(2025, 6, 12, 21, 9, tzinfo=ZoneInfo("Europe/Kyiv"))
     
     # Дані для хорошого відновлення але слабких тренувань (7 днів)
     daily_data = [

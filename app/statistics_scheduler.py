@@ -128,7 +128,7 @@ class StatisticsScheduler:
         # Відправка тижневої статистики: кожного понеділка о 09:00
         self.scheduler.add_job(
             self.send_weekly_statistics_to_users,
-            trigger=CronTrigger(day_of_week=0,hour=12, minute=0),  # Понеділок = 0
+            trigger=CronTrigger(day_of_week=0,hour=11, minute=0),  # Понеділок = 0
             id='send_weekly_statistics',
             name='Відправка тижневої статистики користувачам',
             replace_existing=True
@@ -154,38 +154,48 @@ class StatisticsScheduler:
     
     async def send_weekly_statistics_to_users(self):
         """Відправка тижневої статистики всім користувачам"""
-        try:
-            from app.statistics_sender import send_weekly_statistics_to_all_users
-            
-            if self.bot:
-                logger.info("Початок відправки тижневої статистики користувачам")
-                results = await send_weekly_statistics_to_all_users(self.bot)
-                logger.info(f"Результати відправки тижневої статистики: успішно - {results['success']}, невдало - {results['failed']}")
-            else:
-                logger.warning("Не можливо відправити тижневу статистику - бот не ініціалізовано")
+        async def _send_task():
+            try:
+                from app.statistics_sender import send_weekly_statistics_to_all_users
                 
-        except Exception as e:
-            logger.error(f"Помилка при відправці тижневої статистики: {e}")
+                if self.bot:
+                    logger.info("Початок відправки тижневої статистики користувачам")
+                    results = await send_weekly_statistics_to_all_users(self.bot)
+                    logger.info(f"Результати відправки тижневої статистики: успішно - {results['success']}, невдало - {results['failed']}")
+                else:
+                    logger.warning("Не можливо відправити тижневу статистику - бот не ініціалізовано")
+                    
+            except Exception as e:
+                logger.error(f"Помилка при відправці тижневої статистики: {e}")
+        
+        import asyncio
+        asyncio.create_task(_send_task())
+        logger.info("Задача відправки тижневої статистики запущена у фоновому режимі")
     
     async def send_monthly_statistics_to_users(self):
         """Відправка місячної статистики всім користувачам"""
-        try:
-            # Перевіряємо, чи це 4-й понеділок або пізніше
-            if not self.is_fourth_monday_or_later():
-                logger.info("Не 4-й понеділок місяця, місячна статистика не відправляється")
-                return
+        async def _send_task():
+            try:
+                if not self.is_fourth_monday_or_later():
+                    logger.info("Не 4-й понеділок місяця, місячна статистика не відправляється")
+                    return
+                    
+                from app.statistics_sender import send_monthly_statistics_to_all_users
                 
-            from app.statistics_sender import send_monthly_statistics_to_all_users
-            
-            if self.bot:
-                logger.info("Початок відправки місячної статистики користувачам")
-                results = await send_monthly_statistics_to_all_users(self.bot)
-                logger.info(f"Результати відправки місячної статистики: успішно - {results['success']}, невдало - {results['failed']}")
-            else:
-                logger.warning("Не можливо відправити місячну статистику - бот не ініціалізовано")
-                
-        except Exception as e:
-            logger.error(f"Помилка при відправці місячної статистики: {e}")
+                if self.bot:
+                    logger.info("Початок відправки місячної статистики користувачам")
+                    results = await send_monthly_statistics_to_all_users(self.bot)
+                    logger.info(f"Результати відправки місячної статистики: успішно - {results['success']}, невдало - {results['failed']}")
+                else:
+                    logger.warning("Не можливо відправити місячну статистику - бот не ініціалізовано")
+                    
+            except Exception as e:
+                logger.error(f"Помилка при відправці місячної статистики: {e}")
+        
+        # Запускаємо в окремій задачі, щоб не блокувати scheduler
+        import asyncio
+        asyncio.create_task(_send_task())
+        logger.info("Задача відправки місячної статистики запущена у фоновому режимі")
 
     def get_scheduler_status(self) -> dict:
         """Отримання статусу планувальника"""

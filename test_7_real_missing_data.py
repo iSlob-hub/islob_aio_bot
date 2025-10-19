@@ -36,7 +36,7 @@ async def create_real_missing_data_scenario():
     print(f"✅ Створено користувача: {test_user.full_name}")
     
     # Період (23 вересня 2025, 10:00)
-    start_date = datetime(2025, 9, 23, 10, 0, tzinfo=ZoneInfo("Europe/Kyiv"))
+    start_date = datetime(2025, 10, 6, 10, 0, tzinfo=ZoneInfo("Europe/Kyiv"))
     
     # План на 7 днів - деякі дні взагалі пропущені
     daily_plan = [

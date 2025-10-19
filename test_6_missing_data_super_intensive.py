@@ -37,7 +37,7 @@ async def create_missing_data_super_intensive_scenario():
     print(f"✅ Створено користувача: {test_user.full_name}")
     
     # Період (22 вересня 2025, 21:44)
-    start_date = datetime(2025, 9, 22, 21, 44, tzinfo=ZoneInfo("Europe/Kyiv"))
+    start_date = datetime(2025, 10, 6, 21, 9, tzinfo=ZoneInfo("Europe/Kyiv"))
     
     # Дані з пропусками та суперінтенсивними тренуваннями (7 днів)
     daily_data = [

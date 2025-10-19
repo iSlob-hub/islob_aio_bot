@@ -37,7 +37,7 @@ async def create_unstable_medium_level_scenario():
     print(f"✅ Створено користувача: {test_user.full_name}")
     
     # Період (22 вересня 2025, 21:21)
-    start_date = datetime(2025, 9, 22, 21, 21, tzinfo=ZoneInfo("Europe/Kyiv"))
+    start_date = datetime(2025, 10, 6, 21, 9, tzinfo=ZoneInfo("Europe/Kyiv"))
     
     # Дані для нестабільного середнього рівня (7 днів)
     daily_data = [

@@ -102,7 +102,8 @@ class BotScheduler:
             self.scheduler.add_job(
                 self.check_unpaid_users,
                 "cron",
-                hour="9",
+                hour="15",
+                minute="10",
                 id="check_unpaid_users",
                 replace_existing=True,
             )
@@ -624,6 +625,8 @@ class BotScheduler:
                         chat_id=ADMIN_CHAT_ID,
                         text=f'#Payments У користувача <a href="tg://user?id={user.telegram_id}"> {user.full_name} @{user.telegram_username} ({user.telegram_id})</a> закінчився платний період.',
                     )
+                    user.paused_payment = True
+                    await user.save()
                     print(f"Notified user {user.id} about subscription expiration")
                 
                 if user.payed_days_left == 7:

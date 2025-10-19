@@ -8,3 +8,5 @@ statistics_images/
 *default.instructions.md
 extracted_ai_analyses/
 test_message.txt
+.vscode/launch.json
+test.html

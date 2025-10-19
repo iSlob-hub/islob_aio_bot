@@ -37,7 +37,7 @@ async def create_critical_bad_week_scenario():
     print(f"✅ Створено користувача: {test_user.full_name}")
     
     # Період (22 вересня 2025, 21:16)
-    start_date = datetime(2025, 9, 22, 21, 16, tzinfo=ZoneInfo("Europe/Kyiv"))
+    start_date = datetime(2025, 10, 6, 21, 9, tzinfo=ZoneInfo("Europe/Kyiv"))
     
     # Дані для критично поганого тижня (7 днів)
     daily_data = [
