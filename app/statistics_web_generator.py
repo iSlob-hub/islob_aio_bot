@@ -782,8 +782,7 @@ class WebStatisticsGenerator:
         finally:
             # Clean up the temporary HTML file
             try:
-                # os.remove(html_path)
-                pass
+                os.remove(html_path)
             except Exception as e:
                 logger.warning(f"Failed to remove temporary HTML file: {e}")
 
