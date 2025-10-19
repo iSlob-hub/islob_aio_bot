@@ -102,8 +102,7 @@ class BotScheduler:
             self.scheduler.add_job(
                 self.check_unpaid_users,
                 "cron",
-                hour="15",
-                minute="10",
+                hour="9",
                 id="check_unpaid_users",
                 replace_existing=True,
             )
