@@ -147,9 +147,33 @@ async def process_morning_notification_time(
     if user:
         time_str = message.text
         if is_valid_morning_time(time_str):
+            # Конвертуємо час користувача в київський час для збереження в БД
+            timezone_offset = user.timezone_offset or 0
+            
+            try:
+                user_hour, user_minute = map(int, time_str.split(':'))
+            except ValueError:
+                await message.answer(
+                    text=await get_template("invalid_time"),
+                    reply_markup=ReplyKeyboardRemove(),
+                )
+                return
+            
+            # Віднімаємо офсет користувача, щоб отримати київський час
+            kyiv_hour = user_hour - timezone_offset
+            
+            # Обробка переходу через межу доби
+            if kyiv_hour < 0:
+                kyiv_hour += 24
+            elif kyiv_hour >= 24:
+                kyiv_hour -= 24
+            
+            kyiv_time_str = f"{kyiv_hour:02d}:{user_minute:02d}"
+            
             notification = Notification(
                 user_id=str(user_telegram_id),
-                notification_time=time_str,
+                notification_time=kyiv_time_str,
+                notification_time_base=time_str,  # Зберігаємо оригінальний час користувача
                 notification_text="",
                 notification_type=NotificationType.DAILY_MORNING_NOTIFICATION,
             )
@@ -214,6 +238,7 @@ async def process_training_goal(
         template_notification = Notification(
             user_id=str(user_telegram_id),
             notification_time="15:00",  # Default time - user can change via web app
+            notification_time_base="15:00",  # За замовчуванням той самий час
             notification_text="Шаблон сповіщення після тренування",
             notification_type=NotificationType.AFTER_TRAINING_NOTIFICATION,
             is_active=False,  # Template, never active
