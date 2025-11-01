@@ -161,10 +161,12 @@ class BotScheduler:
         
         for notification in notifications:
             logger.debug(f"Processing notification for {notification.user_id}")
-            notification_time = notification.notification_time
-            time_now_str = datetime.now(tz=zone_info).strftime("%H:%M")
             
-            print(f"DEBUG: User {notification.user_id} notification time: {notification_time}, current: {time_now_str}")
+            # notification_time в БД - це київський час для відправки
+            notification_time = notification.notification_time
+            user_time_display = notification.notification_time_base or notification_time
+            
+            print(f"DEBUG: User {notification.user_id} - Kyiv time in DB: {notification_time}, User local time: {user_time_display}, current Kyiv: {current_time_str}")
             
             if not notification.system_data:
                 notification.system_data = {}
@@ -180,16 +182,14 @@ class BotScheduler:
                         f"Skipping notification for {notification.user_id} at {notification_time}, already sent today"
                     )
                     continue
-            try:
-                notification_time_padded = datetime.strptime(notification_time, "%H:%M").strftime("%H:%M")
-            except ValueError:
-                notification_time_padded = datetime.strptime(notification_time, "%-H:%M").strftime("%H:%M")
-            if notification_time_padded != time_now_str:
+            
+            # Порівнюємо поточний київський час з часом з БД
+            if notification_time != current_time_str:
                 logger.debug(
-                    f"Skipping notification for {notification.user_id} at {notification_time_padded}, current time is {time_now_str}"
+                    f"Skipping notification for {notification.user_id} - DB time {notification_time} != current {current_time_str}"
                 )
                 continue
-            logger.debug(f"Sending morning notification to {notification.user_id}")
+            logger.debug(f"Sending morning notification to {notification.user_id} (their local time: {user_time_display})")
             recipient = notification.user_id
 
             morning_quiz = MorningQuiz(

@@ -347,6 +347,10 @@ async def handle_do_you_have_any_pain(
     next_day = datetime.now(ZoneInfo("UTC")) + timedelta(days=1)
     next_day_date = next_day.date()
     
+    # Отримуємо користувача для таймзони
+    user = await User.find_one(User.telegram_id == str(callback_query.from_user.id))
+    timezone_offset = user.timezone_offset or 0 if user else 0
+    
     # Get user's default notification time from template notification or use 15:00
     default_time = "15:00"
     template_notification = await Notification.find_one(
@@ -360,9 +364,11 @@ async def handle_do_you_have_any_pain(
         default_time = template_notification.notification_time
     else:
         # Create template if it doesn't exist (for existing users)
+        # Для шаблону використовуємо київський час, а base буде null
         template_notification = Notification(
             user_id=str(callback_query.from_user.id),
             notification_time="15:00",
+            notification_time_base="15:00",  # За замовчуванням той самий час
             notification_text="Шаблон сповіщення після тренування",
             notification_type=NotificationType.AFTER_TRAINING_NOTIFICATION,
             is_active=False,
@@ -371,10 +377,25 @@ async def handle_do_you_have_any_pain(
         await template_notification.save()
         print(f"Created template notification for existing user {callback_query.from_user.id}")
     
+    # Розраховуємо notification_time_base (час в таймзоні користувача)
+    try:
+        kyiv_hour, kyiv_minute = map(int, default_time.split(':'))
+        user_hour = kyiv_hour + timezone_offset
+        
+        if user_hour < 0:
+            user_hour += 24
+        elif user_hour >= 24:
+            user_hour -= 24
+        
+        user_time_str = f"{user_hour:02d}:{kyiv_minute:02d}"
+    except ValueError:
+        user_time_str = default_time  # Fallback
+    
     # Create a new notification for this specific training session
     after_training_notification = Notification(
         user_id=str(callback_query.from_user.id),
-        notification_time=default_time,
+        notification_time=default_time,  # Київський час
+        notification_time_base=user_time_str,  # Час користувача
         notification_text="Опитування після тренування",
         notification_type=NotificationType.AFTER_TRAINING_NOTIFICATION,
         is_active=True,

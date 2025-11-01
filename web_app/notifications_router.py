@@ -30,6 +30,7 @@ class NotificationResponse(BaseModel):
     id: str
     user_id: str
     notification_time: str
+    notification_time_base: Optional[str] = None  # Original time in user's timezone
     notification_text: str
     notification_type: str
     custom_notification_text: Optional[str] = None
@@ -41,6 +42,8 @@ class NotificationResponse(BaseModel):
     cron_human_readable: Optional[str] = None
     user_info: Optional[dict] = None
     scheduled_date: Optional[str] = None  # For after training notifications
+    user_timezone_offset: Optional[int] = None  # Timezone offset from Kyiv time
+    user_country: Optional[str] = None  # User's country
 
 
 class CreateNotificationRequest(BaseModel):
@@ -115,8 +118,15 @@ async def get_user_notifications(
             if notification_type:
                 query_filter["notification_type"] = notification_type
                 
-            # Отримуємо дані користувачів для додавання імен
-            users = {user.telegram_id: user.full_name for user in await User.find().to_list()}
+            # Отримуємо дані користувачів для додавання імен та таймзон
+            users_list = await User.find().to_list()
+            users = {
+                user.telegram_id: {
+                    "name": user.full_name,
+                    "timezone_offset": user.timezone_offset,
+                    "country": user.country
+                } for user in users_list
+            }
         else:
             # Перевіряємо чи існує користувач
             user = await User.find_one({"telegram_id": user_id})
@@ -127,16 +137,32 @@ async def get_user_notifications(
             query_filter = {"user_id": user_id}
             if notification_type:
                 query_filter["notification_type"] = notification_type
+            
+            # Зберігаємо дані користувача для подальшого використання
+            users = {
+                user_id: {
+                    "name": user.full_name,
+                    "timezone_offset": user.timezone_offset,
+                    "country": user.country
+                }
+            }
         
         # Отримуємо сповіщення з сортуванням
         notifications = await Notification.find(query_filter).sort([("created_at", -1)]).to_list()
         
         result = []
         for notification in notifications:
-            # Додаємо інформацію про користувача якщо запит був для всіх користувачів
+            # Додаємо інформацію про користувача
             user_info = None
-            if user_id.lower() == "all" and notification.user_id in users:
-                user_info = {"name": users[notification.user_id]}
+            user_timezone_offset = None
+            user_country = None
+            
+            if notification.user_id in users:
+                user_data = users[notification.user_id]
+                if user_id.lower() == "all":
+                    user_info = {"name": user_data["name"]}
+                user_timezone_offset = user_data["timezone_offset"]
+                user_country = user_data["country"]
                 
             # Extract scheduled_date from system_data for after training notifications
             scheduled_date = None
@@ -149,6 +175,7 @@ async def get_user_notifications(
                 id=str(notification.id),
                 user_id=notification.user_id,
                 notification_time=notification.notification_time,
+                notification_time_base=notification.notification_time_base,
                 notification_text=notification.notification_text,
                 notification_type=notification.notification_type.value,
                 custom_notification_text=notification.custom_notification_text,
@@ -158,8 +185,10 @@ async def get_user_notifications(
                 is_active=notification.is_active,
                 created_at=notification.created_at,
                 cron_human_readable=cron_to_human_readable(notification.custom_notification_cron) if notification.custom_notification_cron else None,
-                user_info=user_info,  # Додаємо інформацію про користувача
-                scheduled_date=scheduled_date  # Додаємо дату відправки
+                user_info=user_info,
+                scheduled_date=scheduled_date,
+                user_timezone_offset=user_timezone_offset,
+                user_country=user_country
             )
             result.append(notification_data)
         
@@ -198,10 +227,30 @@ async def create_notification(
             except Exception:
                 raise HTTPException(status_code=400, detail="Невірний cron вираз")
         
+        # Конвертуємо час з київського в час користувача для notification_time_base
+        timezone_offset = user.timezone_offset or 0
+        
+        try:
+            kyiv_hour, kyiv_minute = map(int, request.notification_time.split(':'))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Невірний формат часу")
+        
+        # Додаємо офсет для отримання часу користувача
+        user_hour = kyiv_hour + timezone_offset
+        
+        # Обробка переходу через межу доби
+        if user_hour < 0:
+            user_hour += 24
+        elif user_hour >= 24:
+            user_hour -= 24
+        
+        user_time_str = f"{user_hour:02d}:{kyiv_minute:02d}"
+        
         # Створення сповіщення
         notification = Notification(
             user_id=request.user_id,
-            notification_time=request.notification_time,
+            notification_time=request.notification_time,  # Київський час
+            notification_time_base=user_time_str,  # Час користувача
             notification_text=request.notification_text,
             notification_type=notification_type_enum,
             custom_notification_text=request.notification_text if notification_type_enum == NotificationType.CUSTOM_NOTIFICATION else None,
@@ -216,6 +265,7 @@ async def create_notification(
             id=str(notification.id),
             user_id=notification.user_id,
             notification_time=notification.notification_time,
+            notification_time_base=notification.notification_time_base,
             notification_text=notification.notification_text,
             notification_type=notification.notification_type.value,
             custom_notification_text=notification.custom_notification_text,
@@ -257,6 +307,7 @@ async def toggle_notification(
             id=str(notification.id),
             user_id=notification.user_id,
             notification_time=notification.notification_time,
+            notification_time_base=notification.notification_time_base,
             notification_text=notification.notification_text,
             notification_type=notification.notification_type.value,
             custom_notification_text=notification.custom_notification_text,
@@ -338,6 +389,28 @@ async def update_notification(
             except Exception:
                 raise HTTPException(status_code=400, detail="Невірний cron вираз")
         
+        # Отримуємо користувача для розрахунку таймзони
+        user = await User.find_one({"telegram_id": notification.user_id})
+        if user:
+            timezone_offset = user.timezone_offset or 0
+            
+            try:
+                kyiv_hour, kyiv_minute = map(int, request.notification_time.split(':'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Невірний формат часу")
+            
+            # Додаємо офсет для отримання часу користувача
+            user_hour = kyiv_hour + timezone_offset
+            
+            # Обробка переходу через межу доби
+            if user_hour < 0:
+                user_hour += 24
+            elif user_hour >= 24:
+                user_hour -= 24
+            
+            user_time_str = f"{user_hour:02d}:{kyiv_minute:02d}"
+            notification.notification_time_base = user_time_str
+        
         # Оновлення полів сповіщення
         notification.notification_time = request.notification_time
         notification.notification_text = request.notification_text
@@ -361,6 +434,7 @@ async def update_notification(
             id=str(notification.id),
             user_id=notification.user_id,
             notification_time=notification.notification_time,
+            notification_time_base=notification.notification_time_base,
             notification_text=notification.notification_text,
             notification_type=notification.notification_type.value,
             custom_notification_text=notification.custom_notification_text,

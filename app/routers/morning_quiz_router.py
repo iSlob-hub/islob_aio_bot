@@ -12,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 from typing import Optional
 from app.states import MorningQuizStates
 from app.routers.main_router import MainMenuState
-from app.db.models import MorningQuiz, Notification, NotificationType
+from app.db.models import MorningQuiz, Notification, NotificationType, User
 import datetime
 from app.keyboards import get_main_menu_keyboard
 from app.utils.text_templates import get_template, format_template
@@ -25,22 +25,38 @@ async def create_gym_reminder_notification(user_id: str, gym_time: datetime.date
             "notification_type": "gym_reminder_notification"
         }).delete()
         
-        reminder_time = gym_time
+        # gym_time приходить в часовому поясі користувача (з ранкового опитування)
+        user = await User.find_one(User.telegram_id == user_id)
+        timezone_offset = user.timezone_offset or 0 if user else 0
+        
+        # Конвертуємо час користувача в київський час
+        user_hour = gym_time.hour
+        user_minute = gym_time.minute
+        
+        kyiv_hour = user_hour - timezone_offset
+        if kyiv_hour < 0:
+            kyiv_hour += 24
+        elif kyiv_hour >= 24:
+            kyiv_hour -= 24
+        
+        kyiv_time_str = f"{kyiv_hour:02d}:{user_minute:02d}"
+        user_time_str = gym_time.strftime("%H:%M")
         
         notification = Notification(
             user_id=user_id,
-            notification_time=reminder_time.strftime("%H:%M"),
-            notification_text=f"Час тренування: {gym_time.strftime('%H:%M')}",
+            notification_time=kyiv_time_str,  # Київський час для scheduler
+            notification_time_base=user_time_str,  # Оригінальний час користувача
+            notification_text=f"Час тренування: {user_time_str}",
             notification_type="gym_reminder_notification",
             is_active=True,
             system_data={
-                "gym_time": gym_time.strftime("%H:%M"),
+                "gym_time": user_time_str,
                 "created_date": datetime.datetime.now().date().isoformat()
             }
         )
         await notification.save()
         
-        print(f"✅ Created gym reminder for user {user_id} at {reminder_time.strftime('%H:%M')}")
+        print(f"✅ Created gym reminder for user {user_id}: user_time={user_time_str}, kyiv_time={kyiv_time_str}, offset={timezone_offset}")
         
     except Exception as e:
         print(f"❌ Failed to create gym reminder notification: {e}")

@@ -13,7 +13,7 @@ import re
 from app.routers.main_router import MainMenuState
 from app.states import NotificationsState
 import app.keyboards as kb
-from app.db.models import Notification, NotificationType
+from app.db.models import Notification, NotificationType, User
 from app.utils.bot_utils import cron_to_human_readable
 from app.utils.text_templates import get_template, format_template
 
@@ -267,26 +267,47 @@ async def process_notification_menu(message: Message, state: FSMContext) -> None
             return
         frequency_key = data.get("edit_frequency")
         text = data.get("edit_notification_text")
-        time = data.get("edit_time")
+        time = data.get("edit_time")  # Час в таймзоні користувача
         weekdays = data.get("edit_weekdays", [])
         monthdays = data.get("edit_monthdays", [])
+        
+        # Отримуємо таймзону користувача
+        user = await User.find_one(User.telegram_id == notification.user_id)
+        timezone_offset = user.timezone_offset or 0 if user else 0
+        
+        # Конвертуємо час користувача в київський час
+        try:
+            user_hour, user_minute = map(int, time.split(':'))
+            kyiv_hour = user_hour - timezone_offset
+            
+            if kyiv_hour < 0:
+                kyiv_hour += 24
+            elif kyiv_hour >= 24:
+                kyiv_hour -= 24
+            
+            kyiv_time = f"{kyiv_hour:02d}:{user_minute:02d}"
+        except ValueError:
+            kyiv_time = time  # Fallback
+        
+        # В cron використовуємо київський час
         if frequency_key == "freq_daily":
-            cron_expr = f"{int(time.split(':')[1])} {int(time.split(':')[0])} * * *"
+            cron_expr = f"{int(kyiv_time.split(':')[1])} {int(kyiv_time.split(':')[0])} * * *"
         elif frequency_key == "freq_weekly":
             cron_days = ",".join([
                 str(["Нд", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"].index(day))
                 for day in weekdays
             ])
-            cron_expr = f"{int(time.split(':')[1])} {int(time.split(':')[0])} * * {cron_days}"
+            cron_expr = f"{int(kyiv_time.split(':')[1])} {int(kyiv_time.split(':')[0])} * * {cron_days}"
         elif frequency_key == "freq_monthly":
             cron_days = ",".join(monthdays)
-            cron_expr = f"{int(time.split(':')[1])} {int(time.split(':')[0])} {cron_days} * *"
+            cron_expr = f"{int(kyiv_time.split(':')[1])} {int(kyiv_time.split(':')[0])} {cron_days} * *"
         else:
             await callback.answer(await get_template("error_unknown_frequency"), show_alert=True)
             return
         notification.notification_text = text
         notification.custom_notification_text = text
-        notification.notification_time = time
+        notification.notification_time = kyiv_time  # Київський час
+        notification.notification_time_base = time  # Оригінальний час користувача
         notification.custom_notification_cron = cron_expr
         await notification.save()
         await callback.answer(await get_template("edit_saved"))
@@ -597,12 +618,32 @@ async def confirm_notification(callback: CallbackQuery, state: FSMContext):
 
     frequency = tc.frequency_options.get(data.get("frequency"))
     text = data.get("new_notification_text")
-    time = data.get("time")
+    time = data.get("time")  # Час в таймзоні користувача
     weekdays = data.get("weekdays", [])
     monthdays = data.get("monthdays", [])
-
+    
+    # Отримуємо таймзону користувача для конверсії
+    user = await User.find_one(User.telegram_id == user_id)
+    timezone_offset = user.timezone_offset or 0 if user else 0
+    
+    # Конвертуємо час користувача в київський час
+    try:
+        user_hour, user_minute = map(int, time.split(':'))
+        kyiv_hour = user_hour - timezone_offset
+        
+        # Обробка переходу через межу доби
+        if kyiv_hour < 0:
+            kyiv_hour += 24
+        elif kyiv_hour >= 24:
+            kyiv_hour -= 24
+        
+        kyiv_time = f"{kyiv_hour:02d}:{user_minute:02d}"
+    except ValueError:
+        kyiv_time = time  # Fallback
+    
+    # В cron використовуємо київський час
     if frequency == "Щодня":
-        cron_expr = f"{int(time.split(':')[1])} {int(time.split(':')[0])} * * *"
+        cron_expr = f"{int(kyiv_time.split(':')[1])} {int(kyiv_time.split(':')[0])} * * *"
     elif frequency == "Щотижня":
         cron_days = ",".join(
             [
@@ -611,12 +652,12 @@ async def confirm_notification(callback: CallbackQuery, state: FSMContext):
             ]
         )
         cron_expr = (
-            f"{int(time.split(':')[1])} {int(time.split(':')[0])} * * {cron_days}"
+            f"{int(kyiv_time.split(':')[1])} {int(kyiv_time.split(':')[0])} * * {cron_days}"
         )
     elif frequency == "Щомісяця":
         cron_days = ",".join(monthdays)
         cron_expr = (
-            f"{int(time.split(':')[1])} {int(time.split(':')[0])} {cron_days} * *"
+            f"{int(kyiv_time.split(':')[1])} {int(kyiv_time.split(':')[0])} {cron_days} * *"
         )
     else:
         await callback.answer(await get_template("error_unknown_frequency"), show_alert=True)
@@ -624,7 +665,8 @@ async def confirm_notification(callback: CallbackQuery, state: FSMContext):
 
     notification = Notification(
         user_id=user_id,
-        notification_time=time,
+        notification_time=kyiv_time,  # Київський час для scheduler
+        notification_time_base=time,  # Оригінальний час користувача
         notification_text=text,
         notification_type=NotificationType.CUSTOM_NOTIFICATION,
         custom_notification_text=text,
