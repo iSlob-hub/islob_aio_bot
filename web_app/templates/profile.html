@@ -21,11 +21,38 @@
 .payment-actions .btn {
     margin: 5px;
 }
+.country-search-wrapper {
+    position: relative;
+    margin-bottom: 10px;
+}
+.country-search-wrapper .clear-search {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #6c757d;
+    cursor: pointer;
+    font-size: 18px;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: none;
+}
+.country-search-wrapper .clear-search:hover {
+    color: #dc3545;
+}
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const countrySelect = document.getElementById('countrySelect');
     const timezoneOffset = document.getElementById('timezoneOffset');
+    const countrySearch = document.getElementById('countrySearch');
+    const clearSearchBtn = document.getElementById('clearSearch');
+    
+    // Store all options for filtering
+    const allOptions = Array.from(countrySelect.options).slice(1); // Skip first "-- Оберіть країну --"
     
     // Update hidden field when country is selected
     countrySelect.addEventListener('change', function() {
@@ -34,6 +61,49 @@ document.addEventListener('DOMContentLoaded', function() {
         if (offset) {
             timezoneOffset.value = offset;
         }
+    });
+    
+    // Search functionality
+    countrySearch.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase().trim();
+        
+        // Show/hide clear button
+        clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
+        
+        // Clear all options except the first one
+        countrySelect.innerHTML = '<option value="">-- Оберіть країну --</option>';
+        
+        if (searchTerm === '') {
+            // If search is empty, show all options
+            allOptions.forEach(option => {
+                countrySelect.appendChild(option.cloneNode(true));
+            });
+        } else {
+            // Filter and show matching options
+            const filteredOptions = allOptions.filter(option => {
+                const optionText = option.textContent.toLowerCase();
+                return optionText.includes(searchTerm);
+            });
+            
+            filteredOptions.forEach(option => {
+                countrySelect.appendChild(option.cloneNode(true));
+            });
+            
+            // Show message if no results
+            if (filteredOptions.length === 0) {
+                const noResultOption = document.createElement('option');
+                noResultOption.textContent = 'Нічого не знайдено';
+                noResultOption.disabled = true;
+                countrySelect.appendChild(noResultOption);
+            }
+        }
+    });
+    
+    // Clear search
+    clearSearchBtn.addEventListener('click', function() {
+        countrySearch.value = '';
+        countrySearch.dispatchEvent(new Event('input'));
+        countrySearch.focus();
     });
 });
 </script>
@@ -190,8 +260,20 @@ document.addEventListener('DOMContentLoaded', function() {
             <form method="post" action="/update-timezone?telegram_id={{ user.telegram_id }}" id="timezoneForm">
                 <div class="mb-3">
                     <label for="country" class="form-label">Виберіть країну проживання:</label>
-                    <select name="country" id="countrySelect" class="form-select" required>
-                        <option value="">-- Оберіть країну --</option>
+                    
+                    <!-- Поле пошуку -->
+                    <div class="country-search-wrapper">
+                        <input type="text" 
+                               id="countrySearch" 
+                               class="form-control mb-2" 
+                               placeholder="🔍 Пошук країни..." 
+                               autocomplete="off">
+                        <button type="button" id="clearSearch" class="clear-search" title="Очистити пошук">
+                            ✕
+                        </button>
+                    </div>
+                    
+                    <select name="country" id="countrySelect" class="form-select" required size="8">
                         {% for c in countries %}
                         <option value="{{ c.country }}" data-offset="{{ c.offset }}"
                                 {% if user.country == c.country %}selected{% endif %}>
