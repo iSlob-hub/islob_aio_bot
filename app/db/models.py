@@ -21,6 +21,10 @@ class User(Document):
     payed_days_left: int = 28 # 4 weeks -> default payment, -1 -> means unlimited
     paused_payment: bool = False
     training_file_url: Optional[str] = None
+    
+    # Timezone settings
+    country: Optional[str] = "Україна"  # Country name
+    timezone_offset: Optional[int] = 0  # Hours difference from Kyiv time (can be negative)
 
     class Settings:
         name = "users"
@@ -45,7 +49,8 @@ class NotificationType(str, Enum):
 
 class Notification(Document):
     user_id: Indexed(str)
-    notification_time: str
+    notification_time: str  # Time in Kyiv timezone for scheduler
+    notification_time_base: Optional[str] = None  # Original time in user's timezone (for display)
     notification_text: str
     notification_type: NotificationType
     custom_notification_text: Optional[str] = None

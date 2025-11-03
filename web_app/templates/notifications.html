@@ -498,12 +498,17 @@ let selectedMonthdays = [];
 let selectedNotificationType = '';
 let selectedFrequency = '';
 let allUsers = [];
+let currentUserData = null; // Дані поточного користувача для розрахунку таймзони
 
 // Завантаження даних при ініціалізації
 document.addEventListener('DOMContentLoaded', function() {
     generateMonthdayButtons();
     loadUsers().then(() => {
         loadNotifications();
+        // Завантажуємо дані поточного користувача
+        if (currentUserId !== 'all') {
+            loadCurrentUserData();
+        }
     });
     
     // Обробники зміни
@@ -515,6 +520,28 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('notificationText').addEventListener('input', updatePreview);
     document.getElementById('notificationTime').addEventListener('change', updatePreview);
 });
+
+// Завантаження даних поточного користувача
+async function loadCurrentUserData() {
+    if (!currentUserId || currentUserId === 'all') {
+        currentUserData = null;
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/notifications/user/${currentUserId}`);
+        const notifications = await response.json();
+        if (notifications.length > 0 && notifications[0].user_timezone_offset !== undefined) {
+            currentUserData = {
+                timezone_offset: notifications[0].user_timezone_offset || 0,
+                country: notifications[0].user_country || 'Україна'
+            };
+        }
+    } catch (error) {
+        console.error('Помилка завантаження даних користувача:', error);
+        currentUserData = null;
+    }
+}
 
 // Завантаження списку користувачів
 async function loadUsers() {
@@ -546,12 +573,13 @@ async function loadUsers() {
 }
 
 // Зміна поточного користувача
-function changeUser() {
+async function changeUser() {
     const userSelector = document.getElementById('userSelector');
     const userId = userSelector.value;
     const userNameDisplay = document.getElementById('currentUserName');
     
     currentUserId = userId;
+    currentUserData = null; // Скидаємо дані користувача
     
     if (userId === 'all') {
         userNameDisplay.textContent = 'всіх користувачів';
@@ -562,10 +590,14 @@ function changeUser() {
             userNameDisplay.textContent = `${user.full_name} (${user.telegram_id})`;
             document.getElementById('createNotificationCard').style.display = 'block';
             document.getElementById('userId').value = userId;
+            
+            // Завантажуємо повні дані користувача з таймзоною
+            await loadCurrentUserData();
         }
     }
     
     loadNotifications();
+    updatePreview(); // Оновлюємо попередній перегляд після зміни користувача
 }
 
 function generateMonthdayButtons() {
@@ -701,9 +733,31 @@ function updatePreview() {
         }
     }
     
+    // Розраховуємо час для користувача
+    let userTimeInfo = '';
+    if (currentUserData) {
+        const [kyivHours, minutes] = time.split(':').map(Number);
+        let userHours = kyivHours + (currentUserData.timezone_offset || 0);
+        
+        // Обробка переходу через межу доби
+        if (userHours < 0) {
+            userHours += 24;
+        } else if (userHours >= 24) {
+            userHours -= 24;
+        }
+        
+        const userTime = `${String(userHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+        const offset = currentUserData.timezone_offset || 0;
+        const offsetSign = offset > 0 ? '+' : (offset < 0 ? '' : '±');
+        const offsetStr = offset !== 0 ? ` (${offsetSign}${offset} год)` : '';
+        
+        userTimeInfo = `<br><strong>🌍 Час для користувача (${currentUserData.country}${offsetStr}):</strong> ${userTime}`;
+    }
+    
     previewText.innerHTML = `
         <strong>📱 Текст сповіщення:</strong> "${text}"<br>
-        <strong>⏰ Розклад:</strong> ${scheduleText}
+        <strong>⏰ Розклад:</strong> ${scheduleText}<br>
+        <strong>🕐 Київський час:</strong> ${time}${userTimeInfo}
     `;
     
     previewSection.style.display = 'block';
@@ -868,6 +922,25 @@ function displayNotifications(notifications) {
         'gym_reminder_notification': '🏋️‍♂️ Нагадування про тренування'
     };
     
+    // Функція для конвертації часу з урахуванням таймзони
+    function convertTime(timeStr, timezoneOffset) {
+        if (!timezoneOffset || timezoneOffset === 0) {
+            return null; // Якщо немає офсету або він нульовий, повертаємо null
+        }
+        
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        let newHours = hours + timezoneOffset;
+        
+        // Обробка переходу через межу доби
+        if (newHours < 0) {
+            newHours += 24;
+        } else if (newHours >= 24) {
+            newHours -= 24;
+        }
+        
+        return `${String(newHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    }
+    
     // Сортування сповіщень: спочатку активні, потім по типу, потім по часу
     notifications.sort((a, b) => {
         // Спочатку активні
@@ -945,7 +1018,35 @@ function displayNotifications(notifications) {
                             
                             <div class="text-muted small">
                                 <i class="fas fa-clock me-1"></i>
-                                ${notification.cron_human_readable || `Час: ${notification.notification_time}`}
+                                ${(() => {
+                                    let timeDisplay = '';
+                                    
+                                    // Для кастомних сповіщень показуємо cron + час
+                                    if (notification.cron_human_readable) {
+                                        timeDisplay = `<strong>${notification.cron_human_readable}</strong>`;
+                                        
+                                        // Додаємо київський час
+                                        timeDisplay += `<br><i class="fas fa-map-marker-alt ms-3"></i> Київ: ${notification.notification_time}`;
+                                        
+                                        // Додаємо час користувача якщо є notification_time_base
+                                        if (notification.notification_time_base && notification.user_country) {
+                                            const offsetSign = notification.user_timezone_offset > 0 ? '+' : '';
+                                            const offsetStr = notification.user_timezone_offset !== 0 ? ` (${offsetSign}${notification.user_timezone_offset} год)` : '';
+                                            timeDisplay += `<br><i class="fas fa-globe ms-3"></i> ${notification.user_country}${offsetStr}: ${notification.notification_time_base}`;
+                                        }
+                                    } else {
+                                        // Для інших типів сповіщень
+                                        timeDisplay = `<strong>Час (Київ):</strong> ${notification.notification_time}`;
+                                        
+                                        // Показуємо час користувача якщо є notification_time_base
+                                        if (notification.notification_time_base && notification.user_country) {
+                                            const offsetSign = notification.user_timezone_offset > 0 ? '+' : '';
+                                            const offsetStr = notification.user_timezone_offset !== 0 ? ` (${offsetSign}${notification.user_timezone_offset} год)` : '';
+                                            timeDisplay += `<br><i class="fas fa-globe ms-3"></i> <strong>Час (${notification.user_country}${offsetStr}):</strong> ${notification.notification_time_base}`;
+                                        }
+                                    }
+                                    return timeDisplay;
+                                })()}
                             </div>
                             
                             ${notification.notification_type === 'after_training_notification' && notification.scheduled_date ? 

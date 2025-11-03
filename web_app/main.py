@@ -1,11 +1,15 @@
-from fastapi import FastAPI, Request, Query, Depends, UploadFile, File, HTTPException
+from fastapi import FastAPI, Request, Query, Depends, UploadFile, File, HTTPException, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 import os
 from datetime import datetime
 from functools import wraps
+import logging
+
+logger = logging.getLogger(__name__)
 from app.db.database import init_db
-from app.db.models import User, TrainingSession, MorningQuiz
+from app.db.models import User, TrainingSession, MorningQuiz, Notification
+from app.constants import COUNTRIES_WITH_TIMEZONES
 from typing import Optional
 from fastapi.encoders import jsonable_encoder
 from dotenv import load_dotenv
@@ -189,7 +193,12 @@ async def user_profile(request: Request, telegram_id: str = Query(...), user: Us
     if not user_profile:
         return templates.TemplateResponse(
             "profile.html",
-            {"request": request, "error": f"No user with Telegram ID: {telegram_id}", "current_user": user}
+            {
+                "request": request,
+                "error": f"No user with Telegram ID: {telegram_id}",
+                "current_user": user,
+                "countries": COUNTRIES_WITH_TIMEZONES
+            }
         )
 
     return templates.TemplateResponse(
@@ -197,7 +206,8 @@ async def user_profile(request: Request, telegram_id: str = Query(...), user: Us
         {
             "request": request,
             "user": user_profile,
-            "current_user": user
+            "current_user": user,
+            "countries": COUNTRIES_WITH_TIMEZONES
         }
     )
 
@@ -314,6 +324,59 @@ async def cancel_unlimited(
     # Встановлюємо звичайний тариф з вказаною кількістю днів
     user_profile.payed_days_left = days
     await user_profile.save()
+    
+    return RedirectResponse(f"/profile?telegram_id={telegram_id}", status_code=302)
+
+
+@app.post("/update-timezone")
+async def update_timezone(
+    request: Request,
+    telegram_id: str,
+    country: str = Form(...),
+    timezone_offset: int = Form(...),
+    user: User = Depends(get_admin_user)
+):
+    """Оновити країну та часову зону користувача"""
+    user_profile = await User.find_one(User.telegram_id == telegram_id)
+    if not user_profile:
+        raise HTTPException(status_code=404, detail="Користувача не знайдено")
+    
+    # Оновлюємо таймзону користувача
+    user_profile.country = country
+    user_profile.timezone_offset = timezone_offset
+    await user_profile.save()
+    
+    # Перераховуємо всі активні сповіщення користувача на основі notification_time_base
+    notifications = await Notification.find(
+        Notification.user_id == telegram_id,
+        Notification.is_active == True
+    ).to_list()
+    
+    logger.info(f"🔄 Recalculating {len(notifications)} notifications for user {telegram_id} with new timezone_offset={timezone_offset}")
+    
+    for notification in notifications:
+        if notification.notification_time_base:
+            # Беремо оригінальний час користувача
+            try:
+                user_hour, user_minute = map(int, notification.notification_time_base.split(':'))
+                
+                # Конвертуємо в київський час з новим офсетом
+                kyiv_hour = user_hour - timezone_offset
+                
+                # Обробка переходу через межу доби
+                if kyiv_hour < 0:
+                    kyiv_hour += 24
+                elif kyiv_hour >= 24:
+                    kyiv_hour -= 24
+                
+                notification.notification_time = f"{kyiv_hour:02d}:{user_minute:02d}"
+                await notification.save()
+                
+                logger.info(f"✅ Updated notification {notification.id}: base={notification.notification_time_base}, kyiv={notification.notification_time}, offset={timezone_offset}")
+                
+            except ValueError as e:
+                logger.error(f"❌ Invalid time format in notification {notification.id}: {notification.notification_time_base}, error: {e}")
+                continue
     
     return RedirectResponse(f"/profile?telegram_id={telegram_id}", status_code=302)
 
