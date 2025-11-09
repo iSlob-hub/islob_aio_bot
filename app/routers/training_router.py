@@ -623,9 +623,14 @@ async def generate_training_preview(callback_query: CallbackQuery, user: User) -
                 response.raise_for_status()
                 file_content = response.content
             
-            # Завантажуємо файл до OpenAI (асинхронно)
+            # Отримуємо ім'я файлу з URL
+            filename = user.training_file_url.split('/')[-1]
+            if not filename.endswith('.pdf'):
+                filename = 'training.pdf'
+            
+            # Завантажуємо файл до OpenAI (асинхронно) з правильним форматом
             uploaded_file = await client.files.create(
-                file=file_content,
+                file=(filename, file_content, "application/pdf"),
                 purpose="assistants"
             )
             
