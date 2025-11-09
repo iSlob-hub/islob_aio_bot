@@ -307,6 +307,13 @@ document.addEventListener('DOMContentLoaded', function() {
             📋 Скопіювати посилання
             </button>
             </div>
+            
+            <!-- Кнопка для відправки сповіщення -->
+            <form action="/notify-training-assigned?telegram_id={{ user.telegram_id }}" method="post" class="mt-3">
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-paper-plane"></i> Відправити сповіщення користувачу
+                </button>
+            </form>
         {% else %}
             <div class="alert alert-warning">
             🚫 Файл ще не завантажено.
@@ -319,7 +326,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <input type="file" name="file" id="file" class="form-control" required>
             </div>
             <button type="submit" class="btn btn-primary">
-                <i class="fas fa-upload"></i> Завантажити файл
+                <i class="fas fa-upload"></i> Присвоїти тренування
             </button>
         </form>
         </div>

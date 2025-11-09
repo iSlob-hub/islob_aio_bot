@@ -237,6 +237,47 @@ async def upload_training_file(
     return RedirectResponse(f"/profile?telegram_id={user_telegram_id}", status_code=302)
 
 
+@app.post("/notify-training-assigned")
+async def notify_training_assigned(
+    request: Request,
+    telegram_id: str,
+    user: User = Depends(get_admin_user)
+):
+    """Відправити сповіщення користувачу про присвоєне тренування"""
+    from aiogram import Bot
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    
+    recipient = await User.find_one(User.telegram_id == telegram_id)
+    if not recipient or not recipient.training_file_url:
+        raise HTTPException(status_code=404, detail="Користувача не знайдено або тренування не присвоєне")
+    
+    # Створюємо бота
+    bot = Bot(token=BOT_TOKEN)
+    
+    try:
+        # Створюємо клавіатуру з кнопкою
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Підглянути що там 🫣", callback_data="preview_training")]
+        ])
+        
+        # Відправляємо повідомлення
+        await bot.send_message(
+            chat_id=int(telegram_id),
+            text="🎉 Ура! Тренер оновив тобі програму. Погнали її затестимо!",
+            reply_markup=keyboard
+        )
+        
+        logger.info(f"✅ Training notification sent to user {telegram_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to send training notification to {telegram_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Помилка відправки повідомлення: {str(e)}")
+    finally:
+        await bot.session.close()
+    
+    return RedirectResponse(f"/profile?telegram_id={telegram_id}", status_code=302)
+
+
 @app.post("/pause-payment")
 async def pause_payment(
     request: Request,
