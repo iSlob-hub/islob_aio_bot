@@ -600,28 +600,34 @@ async def generate_training_preview(callback_query: CallbackQuery, user: User) -
         with open(prompt_path, 'r', encoding='utf-8') as f:
             system_prompt = f.read()
         
-        # Перевіряємо, чи це локальний файл
+        # Формуємо повний URL до файлу
         if user.training_file_url.startswith("/files/"):
-            # Конвертуємо URL у локальний шлях
-            local_path = Path(__file__).resolve().parent.parent.parent / "internal_files" / user.training_file_url.replace("/files/", "")
-            
-            if not local_path.exists():
+            base_host = settings.BASE_HOST
+            if not base_host:
                 await callback_query.message.answer(
-                    text="❌ Файл тренування не знайдено на сервері."
+                    text="❌ Помилка конфігурації сервера."
                 )
                 return
             
+            file_url = f"{base_host}{user.training_file_url}"
+            
             # Використовуємо AsyncOpenAI для неблокуючих викликів
             from openai import AsyncOpenAI
+            import httpx
             
             client = AsyncOpenAI(api_key=OPENAI_API_KEY)
             
+            # Завантажуємо файл з URL
+            async with httpx.AsyncClient(timeout=30.0) as http_client:
+                response = await http_client.get(file_url)
+                response.raise_for_status()
+                file_content = response.content
+            
             # Завантажуємо файл до OpenAI (асинхронно)
-            with open(local_path, "rb") as file:
-                uploaded_file = await client.files.create(
-                    file=file,
-                    purpose="assistants"
-                )
+            uploaded_file = await client.files.create(
+                file=file_content,
+                purpose="assistants"
+            )
             
             file_id = uploaded_file.id
             
