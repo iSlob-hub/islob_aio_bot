@@ -106,6 +106,9 @@ async def back_to_main_menu(message: Message, state: FSMContext) -> None:
 async def handle_how_do_you_feel_before(
     callback_query: CallbackQuery, state: FSMContext
 ) -> None:
+    # ВАЖЛИВО: Відповідаємо на callback негайно, щоб не було таймауту (10 секунд)
+    await callback_query.answer()
+    
     rating = callback_query.data.split("_")[-1]
     training_session = TrainingSession(
         user_id=str(callback_query.from_user.id),
@@ -163,8 +166,6 @@ async def handle_how_do_you_feel_before(
             ]
         ),
     )
-
-    await callback_query.answer()
 
     await state.set_state(TrainingState.training_started)
 
