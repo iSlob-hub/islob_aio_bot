@@ -38,6 +38,18 @@ training_router = Router()
     F.text == sync_get_template("start_training_button"), StateFilter(MainMenuState.training_menu)
 )
 async def start_training(message: Message, state: FSMContext) -> None:
+    now_utc = datetime.datetime.now(tz=ZoneInfo("UTC"))
+    today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    active_sessions = await TrainingSession.find(
+        TrainingSession.user_id == str(message.from_user.id),
+        TrainingSession.completed != True,
+        TrainingSession.training_started_at >= today_start,
+    ).sort("-training_started_at").to_list(1)
+
+    if active_sessions:
+        return
+
     # remove reply keyboard if it exists
     await message.answer(
         text=await get_template("lets_start_training"),
