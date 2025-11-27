@@ -303,6 +303,11 @@ async def handle_gym_attendance_time(message: Message, state: FSMContext):
     morning_quiz = await MorningQuiz.get(morning_quiz_id)
     morning_quiz.gym_attendance_time = gym_attendance_time_dt
     await morning_quiz.save()
+    # Create reminder right after time is provided, even if the quiz is not finished
+    await create_gym_reminder_notification(
+        user_id=str(message.from_user.id),
+        gym_time=gym_attendance_time_dt
+    )
     await message.answer(
         text= await format_template("morning_quiz_step41",
             how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
