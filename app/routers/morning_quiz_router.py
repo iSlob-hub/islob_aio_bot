@@ -40,10 +40,6 @@ def _weight_choice_keyboard(last_weight: Optional[float]) -> Optional[InlineKeyb
             text=f"Попередня ({last_weight:.1f} кг)",
             callback_data=f"use_prev_weight_{last_weight}",
         ),
-        InlineKeyboardButton(
-            text="Пропустити",
-            callback_data="skip_weight",
-        ),
     ]
     return InlineKeyboardMarkup(inline_keyboard=[buttons])
 
