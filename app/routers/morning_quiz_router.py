@@ -17,6 +17,36 @@ import datetime
 from app.keyboards import get_main_menu_keyboard
 from app.utils.text_templates import get_template, format_template
 
+async def _get_last_weight(user_id: str) -> Optional[float]:
+    """
+    Return last recorded weight for the user if exists.
+    """
+    last_quiz = await MorningQuiz.find(
+        MorningQuiz.user_id == user_id,
+        MorningQuiz.weight != None  # noqa: E711
+    ).sort("-created_at").to_list(1)
+    if last_quiz:
+        return last_quiz[0].weight
+    return None
+
+
+def _weight_choice_keyboard(last_weight: Optional[float]) -> Optional[InlineKeyboardMarkup]:
+    # Only show choices when we have at least one recorded weight
+    if last_weight is None:
+        return None
+
+    buttons = [
+        InlineKeyboardButton(
+            text=f"Попередня ({last_weight:.1f} кг)",
+            callback_data=f"use_prev_weight_{last_weight}",
+        ),
+        InlineKeyboardButton(
+            text="Пропустити",
+            callback_data="skip_weight",
+        ),
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=[buttons])
+
 
 async def create_gym_reminder_notification(user_id: str, gym_time: datetime.datetime):
     try:
@@ -271,6 +301,9 @@ async def handle_is_going_to_gym(callback: CallbackQuery, state: FSMContext):
                 how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
                 sleep_time=morning_quiz.how_many_hours_of_sleep
             ),
+            reply_markup=_weight_choice_keyboard(
+                await _get_last_weight(str(callback.from_user.id))
+            ) or None,
         )
         await state.set_state(MorningQuizStates.waiting_for_weight)
 
@@ -308,6 +341,7 @@ async def handle_gym_attendance_time(message: Message, state: FSMContext):
         user_id=str(message.from_user.id),
         gym_time=gym_attendance_time_dt
     )
+    last_weight = await _get_last_weight(str(message.from_user.id))
     await message.answer(
         text= await format_template("morning_quiz_step41",
             how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
@@ -315,8 +349,54 @@ async def handle_gym_attendance_time(message: Message, state: FSMContext):
             gym_attendance_time=gym_attendance_time_dt.strftime("%H:%M")
         ),
         parse_mode="HTML",
+        reply_markup=_weight_choice_keyboard(last_weight) or None,
     )
     await state.set_state(MorningQuizStates.waiting_for_weight)
+
+
+async def _finish_morning_quiz(
+    responder,
+    state: FSMContext,
+    morning_quiz: MorningQuiz,
+    weight_value: Optional[float],
+    weight_display: str,
+) -> None:
+    if morning_quiz.is_going_to_gym and morning_quiz.gym_attendance_time:
+        await responder.answer(
+            text= await format_template(
+                "morning_quiz_step5",
+                how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
+                sleep_time=morning_quiz.how_many_hours_of_sleep,
+                is_going_to_gym="Так",
+                gym_attendance_time=morning_quiz.gym_attendance_time.strftime("%H:%M"),
+                weight=weight_display
+            ),
+            parse_mode="HTML", reply_markup=await get_main_menu_keyboard()
+        )
+    else:
+        await responder.answer(
+            text= await format_template("morning_quiz_step51",
+                how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
+                sleep_time=morning_quiz.how_many_hours_of_sleep,
+                is_going_to_gym="Ні",
+                weight=weight_display
+            ),
+            parse_mode="HTML", reply_markup=await get_main_menu_keyboard()
+        )
+    
+    morning_quiz.weight = weight_value
+    morning_quiz.completed = True
+    await morning_quiz.save()
+
+    # Створюємо нагадування про тренування, якщо користувач планує йти в зал
+    if morning_quiz.is_going_to_gym and morning_quiz.gym_attendance_time:
+        await create_gym_reminder_notification(
+            user_id=str(responder.from_user.id),
+            gym_time=morning_quiz.gym_attendance_time
+        )
+
+    await state.clear()
+    await state.set_state(MainMenuState.main_menu)
 
 
 @morning_quiz_router.message(StateFilter(MorningQuizStates.waiting_for_weight))
@@ -345,39 +425,73 @@ async def handle_weight(message: Message, state: FSMContext):
         return
 
     morning_quiz = await MorningQuiz.get(morning_quiz_id)
-    morning_quiz.weight = weight
-    await morning_quiz.save()
-    if morning_quiz.is_going_to_gym:
-        await message.answer(
-            text= await format_template("morning_quiz_step5",
-                how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
-                sleep_time=morning_quiz.how_many_hours_of_sleep,
-                is_going_to_gym="Так",
-                gym_attendance_time=morning_quiz.gym_attendance_time.strftime("%H:%M"),
-                weight=weight
-            ),
-            parse_mode="HTML", reply_markup=await get_main_menu_keyboard()
-        )
-    else:
-        await message.answer(
-            text= await format_template("morning_quiz_step51",
-                how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
-                sleep_time=morning_quiz.how_many_hours_of_sleep,
-                is_going_to_gym="Ні",
-                weight=weight
-            ),
-            parse_mode="HTML", reply_markup=await get_main_menu_keyboard()
-        )
-    
-    morning_quiz.completed = True
-    await morning_quiz.save()
+    await _finish_morning_quiz(
+        responder=message,
+        state=state,
+        morning_quiz=morning_quiz,
+        weight_value=weight,
+        weight_display=f"{weight}",
+    )
 
-    # Створюємо нагадування про тренування, якщо користувач планує йти в зал
-    if morning_quiz.is_going_to_gym and morning_quiz.gym_attendance_time:
-        await create_gym_reminder_notification(
-            user_id=str(message.from_user.id),
-            gym_time=morning_quiz.gym_attendance_time
-        )
 
-    await state.clear()
-    await state.set_state(MainMenuState.main_menu)
+@morning_quiz_router.callback_query(
+    F.data == "skip_weight",
+    StateFilter(MorningQuizStates.waiting_for_weight),
+)
+async def skip_weight(callback: CallbackQuery, state: FSMContext) -> None:
+    state_data = await state.get_data()
+    morning_quiz_id = state_data.get("morning_quiz_id")
+    if not morning_quiz_id:
+        await callback.message.answer(await get_template("morning_quiz_issue_happened"))
+        await state.clear()
+        await state.set_state(MainMenuState.main_menu)
+        return
+
+    if await _get_last_weight(str(callback.from_user.id)) is None:
+        await callback.answer("Спочатку введи свою вагу", show_alert=True)
+        return
+
+    morning_quiz = await MorningQuiz.get(morning_quiz_id)
+    await callback.answer(text="Пропустили вагу")
+    await _finish_morning_quiz(
+        responder=callback.message,
+        state=state,
+        morning_quiz=morning_quiz,
+        weight_value=None,
+        weight_display="—",
+    )
+
+
+@morning_quiz_router.callback_query(
+    F.data.startswith("use_prev_weight_"),
+    StateFilter(MorningQuizStates.waiting_for_weight),
+)
+async def use_previous_weight(callback: CallbackQuery, state: FSMContext) -> None:
+    state_data = await state.get_data()
+    morning_quiz_id = state_data.get("morning_quiz_id")
+    if not morning_quiz_id:
+        await callback.message.answer(await get_template("morning_quiz_issue_happened"))
+        await state.clear()
+        await state.set_state(MainMenuState.main_menu)
+        return
+
+    last_weight = await _get_last_weight(str(callback.from_user.id))
+    if last_weight is None:
+        await callback.answer("Спочатку введи свою вагу", show_alert=True)
+        return
+
+    try:
+        previous_weight = float(callback.data.removeprefix("use_prev_weight_"))
+    except ValueError:
+        await callback.answer(await get_template("invalid_weight"), show_alert=True)
+        return
+
+    morning_quiz = await MorningQuiz.get(morning_quiz_id)
+    await callback.answer(text=f"Використовую {previous_weight:.1f} кг")
+    await _finish_morning_quiz(
+        responder=callback.message,
+        state=state,
+        morning_quiz=morning_quiz,
+        weight_value=previous_weight,
+        weight_display=f"{previous_weight}",
+    )

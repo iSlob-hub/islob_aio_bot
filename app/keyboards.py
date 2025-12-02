@@ -73,3 +73,17 @@ async def go_back_button() -> ReplyKeyboardMarkup:
         one_time_keyboard=True,
     )
     return keyboard
+
+
+async def get_report_problem_keyboard() -> ReplyKeyboardMarkup:
+    """Keyboard for the report problem flow with a back-to-menu button."""
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text=tc.BACK_TO_MAIN_MENU_BUTTON),
+            ],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+    return keyboard

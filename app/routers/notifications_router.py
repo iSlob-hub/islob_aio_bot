@@ -41,7 +41,10 @@ async def process_notification_menu(message: Message, state: FSMContext) -> None
             Notification.notification_type == NotificationType.CUSTOM_NOTIFICATION,
         ).to_list()
         if not notifications:
-            await message.answer(await get_template("notif_none"))
+            await message.answer(
+                await get_template("notif_none"),
+                reply_markup=await kb.get_notifications_menu_keyboard(),
+            )
             return
 
         for idx, notification in enumerate(notifications, start=1):
@@ -746,6 +749,10 @@ async def delete_notification(callback: CallbackQuery, state: FSMContext):
 
     if not notifications:
         await callback.message.edit_text(await get_template("notif_none"))
+        await callback.message.answer(
+            text=await get_template("notif_return_to_menu"),
+            reply_markup=await kb.get_notifications_menu_keyboard(),
+        )
         return
 
     for idx, notification in enumerate(notifications, start=1):
