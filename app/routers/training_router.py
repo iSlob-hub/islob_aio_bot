@@ -119,7 +119,19 @@ async def handle_how_do_you_feel_before(
     callback_query: CallbackQuery, state: FSMContext
 ) -> None:
     await callback_query.answer()
-    
+
+    # Ignore duplicate clicks if today's training session is already started
+    now_utc = datetime.datetime.now(tz=ZoneInfo("UTC"))
+    today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    active_sessions = await TrainingSession.find(
+        TrainingSession.user_id == str(callback_query.from_user.id),
+        TrainingSession.completed != True,
+        TrainingSession.training_started_at >= today_start,
+    ).sort("-training_started_at").to_list(1)
+
+    if active_sessions:
+        return
+
     rating = callback_query.data.split("_")[-1]
     training_session = TrainingSession(
         user_id=str(callback_query.from_user.id),
@@ -133,7 +145,10 @@ async def handle_how_do_you_feel_before(
 
     # Перевіряємо чи є файл тренування у користувача
     if user.training_file_url:
-        base_host = settings.BASE_HOST  # Використовуємо settings замість os.environ
+        await callback_query.message.answer(
+            text=await get_template("sending_training_file")
+        )
+        base_host = settings.BASE_HOST
         print(f"DEBUG: BASE_HOST = {base_host}, training_file_url = {user.training_file_url}")
         if base_host:
             try:
