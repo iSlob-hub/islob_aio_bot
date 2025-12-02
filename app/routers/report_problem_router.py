@@ -1,10 +1,11 @@
 from aiogram.filters import StateFilter
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
-from aiogram import Router
+from aiogram import Router, F
 
 from app.routers.main_router import MainMenuState
-from app.keyboards import get_main_menu_keyboard
+from app.keyboards import get_main_menu_keyboard, get_report_problem_keyboard
+import app.text_constants as tc
 from dotenv import load_dotenv
 from app.utils.text_templates import get_template
 import os
@@ -14,6 +15,17 @@ load_dotenv()
 report_problem_router = Router()
 
 REPORT_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+
+
+@report_problem_router.message(
+    StateFilter(MainMenuState.report_problem), F.text == tc.BACK_TO_MAIN_MENU_BUTTON
+)
+async def report_problem_back_to_menu(message: Message, state: FSMContext) -> None:
+    await message.answer(
+        text=await get_template("back_to_main_menu"),
+        reply_markup=await get_main_menu_keyboard(),
+    )
+    await state.set_state(MainMenuState.main_menu)
 
 
 @report_problem_router.message(StateFilter(MainMenuState.report_problem))

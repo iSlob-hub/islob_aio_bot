@@ -14,7 +14,7 @@ from aiogram.types import (
 )
 from typing import Optional
 from app.db.models import User, Notification, NotificationType, MorningQuiz, TrainingGoal
-from app.keyboards import get_main_menu_keyboard, get_notifications_menu_keyboard
+from app.keyboards import get_main_menu_keyboard, get_notifications_menu_keyboard, get_report_problem_keyboard
 from app.utils.bot_utils import is_valid_morning_time
 from app.utils.text_templates import get_template, format_template, sync_get_template
 
@@ -360,7 +360,7 @@ async def process_report_problem(message: Message, state: FSMContext) -> None:
         return
     await message.answer(
         text=await get_template("describe_problem_prompt"),
-        reply_markup=ReplyKeyboardRemove(),
+        reply_markup=await get_report_problem_keyboard(),
     )
     await state.set_state(MainMenuState.report_problem)
 
