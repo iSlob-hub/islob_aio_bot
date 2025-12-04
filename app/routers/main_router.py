@@ -391,7 +391,7 @@ async def cmd_morning_quiz(message: Message, state: FSMContext) -> None:
     )
 
 
-@main_router.message(StateFilter(MainMenuState.main_menu))
+@main_router.message(StateFilter(MainMenuState.main_menu), ~F.text.regexp(r"^/"))
 async def process_main_menu(message: Message, state: FSMContext) -> None:
 
     if await ensure_onboarding_not_finished(message, state):

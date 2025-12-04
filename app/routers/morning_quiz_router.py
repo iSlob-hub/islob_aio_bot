@@ -14,6 +14,7 @@ from app.states import MorningQuizStates
 from app.routers.main_router import MainMenuState
 from app.db.models import MorningQuiz, Notification, NotificationType, User
 import datetime
+import os
 from app.keyboards import get_main_menu_keyboard
 from app.utils.text_templates import get_template, format_template
 
@@ -42,6 +43,65 @@ def _weight_choice_keyboard(last_weight: Optional[float]) -> Optional[InlineKeyb
         ),
     ]
     return InlineKeyboardMarkup(inline_keyboard=[buttons])
+
+
+def _feeling_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="1", callback_data="how_do_you_feel_1"),
+                InlineKeyboardButton(text="2", callback_data="how_do_you_feel_2"),
+                InlineKeyboardButton(text="3", callback_data="how_do_you_feel_3"),
+                InlineKeyboardButton(text="4", callback_data="how_do_you_feel_4"),
+                InlineKeyboardButton(text="5", callback_data="how_do_you_feel_5"),
+            ],
+            [
+                InlineKeyboardButton(text="6", callback_data="how_do_you_feel_6"),
+                InlineKeyboardButton(text="7", callback_data="how_do_you_feel_7"),
+                InlineKeyboardButton(text="8", callback_data="how_do_you_feel_8"),
+                InlineKeyboardButton(text="9", callback_data="how_do_you_feel_9"),
+                InlineKeyboardButton(text="10", callback_data="how_do_you_feel_10"),
+            ],
+        ]
+    )
+
+
+def _gym_choice_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Так", callback_data="is_going_to_gym_yes"),
+                InlineKeyboardButton(text="Ні", callback_data="is_going_to_gym_no"),
+            ]
+        ]
+    )
+
+
+async def _edit_or_answer(callback: CallbackQuery, text: str, reply_markup=None) -> None:
+    try:
+        await callback.message.edit_text(text=text, reply_markup=reply_markup)
+    except Exception as e:
+        # Some clients silently drop edit errors; fall back to a fresh message
+        print(f"Fallback to answer for morning quiz message: {e}")
+        await callback.message.answer(text=text, reply_markup=reply_markup)
+
+
+async def _get_quiz_or_reset(state: FSMContext, responder) -> Optional[MorningQuiz]:
+    state_data = await state.get_data()
+    quiz_id = state_data.get("morning_quiz_id")
+    if not quiz_id:
+        await responder.answer(await get_template("morning_quiz_issue_happened"))
+        await state.clear()
+        await state.set_state(MainMenuState.main_menu)
+        return None
+
+    quiz = await MorningQuiz.get(quiz_id)
+    if not quiz:
+        await responder.answer(await get_template("morning_quiz_issue_happened"))
+        await state.clear()
+        await state.set_state(MainMenuState.main_menu)
+        return None
+    return quiz
 
 
 async def create_gym_reminder_notification(user_id: str, gym_time: datetime.datetime):
@@ -144,26 +204,11 @@ async def morning_quiz_start_handler(callback: CallbackQuery, state: FSMContext)
     await callback.answer()
     await state.set_state(MorningQuizStates.waiting_for_how_do_you_feel_today)
     await state.update_data(morning_quiz_id=morning_quiz_id)
-    await callback.message.edit_text(
-        text= await get_template("how_do_you_feel_today"),
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="1", callback_data="how_do_you_feel_1"),
-                    InlineKeyboardButton(text="2", callback_data="how_do_you_feel_2"),
-                    InlineKeyboardButton(text="3", callback_data="how_do_you_feel_3"),
-                    InlineKeyboardButton(text="4", callback_data="how_do_you_feel_4"),
-                    InlineKeyboardButton(text="5", callback_data="how_do_you_feel_5"),
-                ],
-                [
-                    InlineKeyboardButton(text="6", callback_data="how_do_you_feel_6"),
-                    InlineKeyboardButton(text="7", callback_data="how_do_you_feel_7"),
-                    InlineKeyboardButton(text="8", callback_data="how_do_you_feel_8"),
-                    InlineKeyboardButton(text="9", callback_data="how_do_you_feel_9"),
-                    InlineKeyboardButton(text="10", callback_data="how_do_you_feel_10"),
-                ],
-            ]
-        ),
+    keyboard = _feeling_keyboard()
+    await _edit_or_answer(
+        callback,
+        text=await get_template("how_do_you_feel_today"),
+        reply_markup=keyboard,
     )
 
 
@@ -173,31 +218,28 @@ async def morning_quiz_start_handler(callback: CallbackQuery, state: FSMContext)
 )
 async def handle_how_do_you_feel(callback: CallbackQuery, state: FSMContext):
     feeling = callback.data.split("_")[-1]
-    state_data = await state.get_data()
-    morning_quiz_id = state_data.get("morning_quiz_id")
-    if not morning_quiz_id:
-        await callback.message.edit_text(
-            text= await get_template("morning_quiz_issue_happened"),
-        )
-        await callback.answer()
-        await state.clear()
-        await state.set_state(MainMenuState.main_menu)
+    morning_quiz = await _get_quiz_or_reset(state, callback.message)
+    if not morning_quiz:
         return
 
-    if not 1 <= int(feeling) <= 10:
-        await callback.message.edit_text(
-            text = await get_template("wrong_format_number_1_10"),
+    try:
+        feeling_value = int(feeling)
+    except ValueError:
+        feeling_value = None
+
+    if not feeling_value or not 1 <= feeling_value <= 10:
+        await _edit_or_answer(
+            callback,
+            text=await get_template("wrong_format_number_1_10"),
         )
-        await callback.answer()
         return
 
-    morning_quiz = await MorningQuiz.get(morning_quiz_id)
-
-    morning_quiz.how_do_you_feel_today = int(feeling)
+    morning_quiz.how_do_you_feel_today = feeling_value
     await morning_quiz.save()
     await callback.answer(text= await get_template("your_state_saved"))
-    await callback.message.edit_text(
-        text = await format_template("morning_quiz_step1", feeling=feeling),
+    await _edit_or_answer(
+        callback,
+        text=await format_template("morning_quiz_step1", feeling=feeling_value),
     )
 
     await state.set_state(MorningQuizStates.waiting_for_how_many_hours_of_sleep)
@@ -220,17 +262,9 @@ async def handle_how_many_hours_of_sleep(message: Message, state: FSMContext):
         )
         return
 
-    state_data = await state.get_data()
-    morning_quiz_id = state_data.get("morning_quiz_id")
-    if not morning_quiz_id:
-        await message.answer(
-            text= await get_template("morning_quiz_issue_happened"),
-        )
-        await state.clear()
-        await state.set_state(MainMenuState.main_menu)
+    morning_quiz = await _get_quiz_or_reset(state, message)
+    if not morning_quiz:
         return
-
-    morning_quiz = await MorningQuiz.get(morning_quiz_id)
     morning_quiz.how_many_hours_of_sleep = sleep_time
     await morning_quiz.save()
 
@@ -240,16 +274,7 @@ async def handle_how_many_hours_of_sleep(message: Message, state: FSMContext):
             how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
             sleep_time=sleep_time
         ),
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="Так", callback_data="is_going_to_gym_yes"
-                    ),
-                    InlineKeyboardButton(text="Ні", callback_data="is_going_to_gym_no"),
-                ]
-            ]
-        ),
+        reply_markup=_gym_choice_keyboard(),
         parse_mode="HTML",
     )
 
@@ -262,26 +287,15 @@ async def handle_how_many_hours_of_sleep(message: Message, state: FSMContext):
 )
 async def handle_is_going_to_gym(callback: CallbackQuery, state: FSMContext):
     is_going_to_gym = callback.data.split("_")[-1] == "yes"
-    state_data = await state.get_data()
-    morning_quiz_id = state_data.get("morning_quiz_id")
-    if not morning_quiz_id:
-        await callback.message.edit_text(
-            text= await get_template("morning_quiz_issue_happened"),
-        )
-        await callback.answer()
-        await state.clear()
-        await state.set_state(MainMenuState.main_menu)
+    morning_quiz = await _get_quiz_or_reset(state, callback.message)
+    if not morning_quiz:
         return
 
-    morning_quiz = await MorningQuiz.get(morning_quiz_id)
-    morning_quiz.is_going_to_gym = True if is_going_to_gym == "yes" else False
-    if is_going_to_gym:
-        await callback.answer(text= await get_template("going_to_gym"))
-        morning_quiz.is_going_to_gym = True
-    else:
-        await callback.answer(text= await get_template("not_going_to_gym"))
-        morning_quiz.is_going_to_gym = False
+    morning_quiz.is_going_to_gym = is_going_to_gym
     await morning_quiz.save()
+    await callback.answer(
+        text=await get_template("going_to_gym" if is_going_to_gym else "not_going_to_gym")
+    )
 
     if is_going_to_gym:
         await callback.message.answer(
@@ -292,7 +306,8 @@ async def handle_is_going_to_gym(callback: CallbackQuery, state: FSMContext):
         )
         await state.set_state(MorningQuizStates.waiting_for_gym_attendance_time)
     else:
-        await callback.message.edit_text(
+        await _edit_or_answer(
+            callback,
             text= await format_template("morning_quiz_step32",
                 how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
                 sleep_time=morning_quiz.how_many_hours_of_sleep
@@ -320,16 +335,9 @@ async def handle_gym_attendance_time(message: Message, state: FSMContext):
         )
         return
 
-    state_data = await state.get_data()
-    morning_quiz_id = state_data.get("morning_quiz_id")
-    if not morning_quiz_id:
-        await message.answer(
-            await get_template("morning_quiz_issue_happened")
-        )
-        await state.clear()
-        await state.set_state(MainMenuState.main_menu)
+    morning_quiz = await _get_quiz_or_reset(state, message)
+    if not morning_quiz:
         return
-    morning_quiz = await MorningQuiz.get(morning_quiz_id)
     morning_quiz.gym_attendance_time = gym_attendance_time_dt
     await morning_quiz.save()
     # Create reminder right after time is provided, even if the quiz is not finished
@@ -357,6 +365,17 @@ async def _finish_morning_quiz(
     weight_value: Optional[float],
     weight_display: str,
 ) -> None:
+    gym_time_str = (
+        morning_quiz.gym_attendance_time.strftime("%H:%M")
+        if morning_quiz.gym_attendance_time
+        else ""
+    )
+    gym_time_text = (
+        f"Час відвідування спортзалу: <b>{gym_time_str}</b>.\n"
+        if morning_quiz.is_going_to_gym and gym_time_str
+        else ""
+    )
+
     if morning_quiz.is_going_to_gym and morning_quiz.gym_attendance_time:
         await responder.answer(
             text= await format_template(
@@ -364,7 +383,8 @@ async def _finish_morning_quiz(
                 how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
                 sleep_time=morning_quiz.how_many_hours_of_sleep,
                 is_going_to_gym="Так",
-                gym_attendance_time=morning_quiz.gym_attendance_time.strftime("%H:%M"),
+                gym_attendance_time=gym_time_str,
+                gym_attendance_time_text=gym_time_text,
                 weight=weight_display
             ),
             parse_mode="HTML", reply_markup=await get_main_menu_keyboard()
@@ -375,6 +395,7 @@ async def _finish_morning_quiz(
                 how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
                 sleep_time=morning_quiz.how_many_hours_of_sleep,
                 is_going_to_gym="Ні",
+                gym_attendance_time_text=gym_time_text,
                 weight=weight_display
             ),
             parse_mode="HTML", reply_markup=await get_main_menu_keyboard()
@@ -409,18 +430,9 @@ async def handle_weight(message: Message, state: FSMContext):
         await message.answer(await get_template("invalid_weight"))
         return
 
-
-    state_data = await state.get_data()
-    morning_quiz_id = state_data.get("morning_quiz_id")
-    if not morning_quiz_id:
-        await message.answer(
-            await get_template("morning_quiz_issue_happened")
-        )
-        await state.clear()
-        await state.set_state(MainMenuState.main_menu)
+    morning_quiz = await _get_quiz_or_reset(state, message)
+    if not morning_quiz:
         return
-
-    morning_quiz = await MorningQuiz.get(morning_quiz_id)
     await _finish_morning_quiz(
         responder=message,
         state=state,
@@ -435,19 +447,13 @@ async def handle_weight(message: Message, state: FSMContext):
     StateFilter(MorningQuizStates.waiting_for_weight),
 )
 async def skip_weight(callback: CallbackQuery, state: FSMContext) -> None:
-    state_data = await state.get_data()
-    morning_quiz_id = state_data.get("morning_quiz_id")
-    if not morning_quiz_id:
-        await callback.message.answer(await get_template("morning_quiz_issue_happened"))
-        await state.clear()
-        await state.set_state(MainMenuState.main_menu)
-        return
-
     if await _get_last_weight(str(callback.from_user.id)) is None:
         await callback.answer("Спочатку введи свою вагу", show_alert=True)
         return
 
-    morning_quiz = await MorningQuiz.get(morning_quiz_id)
+    morning_quiz = await _get_quiz_or_reset(state, callback.message)
+    if not morning_quiz:
+        return
     await callback.answer(text="Пропустили вагу")
     await _finish_morning_quiz(
         responder=callback.message,
@@ -463,14 +469,6 @@ async def skip_weight(callback: CallbackQuery, state: FSMContext) -> None:
     StateFilter(MorningQuizStates.waiting_for_weight),
 )
 async def use_previous_weight(callback: CallbackQuery, state: FSMContext) -> None:
-    state_data = await state.get_data()
-    morning_quiz_id = state_data.get("morning_quiz_id")
-    if not morning_quiz_id:
-        await callback.message.answer(await get_template("morning_quiz_issue_happened"))
-        await state.clear()
-        await state.set_state(MainMenuState.main_menu)
-        return
-
     last_weight = await _get_last_weight(str(callback.from_user.id))
     if last_weight is None:
         await callback.answer("Спочатку введи свою вагу", show_alert=True)
@@ -482,7 +480,9 @@ async def use_previous_weight(callback: CallbackQuery, state: FSMContext) -> Non
         await callback.answer(await get_template("invalid_weight"), show_alert=True)
         return
 
-    morning_quiz = await MorningQuiz.get(morning_quiz_id)
+    morning_quiz = await _get_quiz_or_reset(state, callback.message)
+    if not morning_quiz:
+        return
     await callback.answer(text=f"Використовую {previous_weight:.1f} кг")
     await _finish_morning_quiz(
         responder=callback.message,
