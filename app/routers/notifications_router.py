@@ -20,6 +20,21 @@ from app.utils.text_templates import get_template, format_template
 notifications_router = Router()
 
 
+async def _cancel_new_notification(message_or_callback, state: FSMContext):
+    """Return user to notifications menu and clear creation state."""
+    if isinstance(message_or_callback, CallbackQuery):
+        await message_or_callback.answer()
+        responder = message_or_callback.message
+    else:
+        responder = message_or_callback
+    await responder.answer(
+        text=await get_template("notif_return_to_menu"),
+        reply_markup=await kb.get_notifications_menu_keyboard(),
+    )
+    await state.clear()
+    await state.set_state(MainMenuState.notifications_menu)
+
+
 @notifications_router.message(StateFilter(MainMenuState.notifications_menu))
 async def process_notification_menu(message: Message, state: FSMContext) -> None:
     if message.text == tc.BACK_TO_MAIN_MENU_BUTTON:
@@ -32,7 +47,7 @@ async def process_notification_menu(message: Message, state: FSMContext) -> None
     elif message.text == tc.CREATE_NEW_NOTIFICATION_BUTTON:
         await message.answer(
             text=await get_template("notif_create_new"),
-            reply_markup=ReplyKeyboardRemove(),
+            reply_markup=await kb.go_back_button(),
         )
         await state.set_state(NotificationsState.creating_notification_request_text)
     elif message.text == tc.VIEW_NOTIFICATIONS_BUTTON:
@@ -324,6 +339,35 @@ async def process_notification_menu(message: Message, state: FSMContext) -> None
 
 
 @notifications_router.message(
+    StateFilter(
+        NotificationsState.creating_notification_request_text,
+        NotificationsState.creating_notification_request_frequency,
+        NotificationsState.creating_notification_request_weekdays,
+        NotificationsState.creating_notification_request_monthdays,
+        NotificationsState.creating_notification_request_time,
+        NotificationsState.creating_notification_finalize,
+    ),
+    F.text == tc.BACK_BUTTON,
+)
+async def cancel_notification_creation_message(message: Message, state: FSMContext):
+    await _cancel_new_notification(message, state)
+
+
+@notifications_router.callback_query(
+    F.data == "cancel_new_notification",
+    StateFilter(
+        NotificationsState.creating_notification_request_frequency,
+        NotificationsState.creating_notification_request_weekdays,
+        NotificationsState.creating_notification_request_monthdays,
+        NotificationsState.creating_notification_request_time,
+        NotificationsState.creating_notification_finalize,
+    ),
+)
+async def cancel_notification_creation_callback(callback: CallbackQuery, state: FSMContext):
+    await _cancel_new_notification(callback, state)
+
+
+@notifications_router.message(
     StateFilter(NotificationsState.creating_notification_request_text)
 )
 async def process_notification_text(message: Message, state: FSMContext) -> None:
@@ -347,6 +391,9 @@ async def process_notification_text(message: Message, state: FSMContext) -> None
             [
                 InlineKeyboardButton(text="Щомісяця", callback_data="freq_monthly"),
                 # InlineKeyboardButton("Власний розклад", callback_data="freq_custom")
+            ],
+            [
+                InlineKeyboardButton(text=tc.BACK_BUTTON, callback_data="cancel_new_notification"),
             ],
         ]
     )
@@ -383,6 +430,9 @@ async def handle_frequency(callback: CallbackQuery, state: FSMContext):
                     InlineKeyboardButton(
                         text="✅ Продовжити", callback_data="weekdays_done"
                     )
+                ],
+                [
+                    InlineKeyboardButton(text=tc.BACK_BUTTON, callback_data="cancel_new_notification"),
                 ]
             ]
         )
@@ -405,6 +455,9 @@ async def handle_frequency(callback: CallbackQuery, state: FSMContext):
                     InlineKeyboardButton(
                         text="✅ Продовжити", callback_data="monthdays_done"
                     )
+                ],
+                [
+                    InlineKeyboardButton(text=tc.BACK_BUTTON, callback_data="cancel_new_notification"),
                 ]
             ]
         )
@@ -417,6 +470,11 @@ async def handle_frequency(callback: CallbackQuery, state: FSMContext):
     else:
         await callback.message.edit_text(
             text + "\n" + await get_template("enter_time_prompt"),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text=tc.BACK_BUTTON, callback_data="cancel_new_notification")]
+                ]
+            ),
         )
         await state.set_state(NotificationsState.creating_notification_request_time)
 
@@ -460,6 +518,9 @@ async def handle_weekday_selection(callback: CallbackQuery, state: FSMContext):
                     InlineKeyboardButton(
                         text="✅ Продовжити", callback_data="weekdays_done"
                     )
+                ],
+                [
+                    InlineKeyboardButton(text=tc.BACK_BUTTON, callback_data="cancel_new_notification"),
                 ]
             ]
         )
@@ -481,6 +542,11 @@ async def handle_weekday_selection(callback: CallbackQuery, state: FSMContext):
             f"Частота: {tc.frequency_options.get(data['frequency'])}\n"
             f"Дні: {', '.join([d for d in selected])}\n"
             f"" + await get_template("enter_time_prompt"),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text=tc.BACK_BUTTON, callback_data="cancel_new_notification")]
+                ]
+            ),
         )
         await state.update_data(status_message_id=callback.message.message_id)
         await state.set_state(NotificationsState.creating_notification_request_time)
@@ -525,6 +591,9 @@ async def handle_monthday_selection(callback: CallbackQuery, state: FSMContext):
                     InlineKeyboardButton(
                         text="✅ Продовжити", callback_data="monthdays_done"
                     )
+                ],
+                [
+                    InlineKeyboardButton(text=tc.BACK_BUTTON, callback_data="cancel_new_notification"),
                 ]
             ]
         )
@@ -546,6 +615,11 @@ async def handle_monthday_selection(callback: CallbackQuery, state: FSMContext):
             f"Частота: {tc.frequency_options.get(data['frequency'])}\n"
             f"Дні: {', '.join([d for d in selected])}\n"
             f"" + await get_template("enter_time_prompt"),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text=tc.BACK_BUTTON, callback_data="cancel_new_notification")]
+                ]
+            ),
         )
         await state.update_data(status_message_id=callback.message.message_id)
         await state.set_state(NotificationsState.creating_notification_request_time)
@@ -595,7 +669,12 @@ async def handle_time_input(message: Message, state: FSMContext):
                 InlineKeyboardButton(
                     text=await get_template("confirm_button"), callback_data="confirm_notification"
                 )
-            ]
+            ],
+            [
+                InlineKeyboardButton(
+                    text=tc.BACK_BUTTON, callback_data="cancel_new_notification"
+                )
+            ],
         ]
     )
     try:

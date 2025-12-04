@@ -198,7 +198,6 @@ async def handle_how_do_you_feel_before(
 
 @training_router.callback_query(
     F.data.startswith("finish_training_"),
-    StateFilter(TrainingState.training_started),
 )
 async def finish_training(callback_query: CallbackQuery, state: FSMContext) -> None:
     training_session_id = callback_query.data.split("_")[-1]
