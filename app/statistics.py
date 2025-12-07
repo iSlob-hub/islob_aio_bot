@@ -186,8 +186,7 @@ class StatisticsGenerator:
         morning_quizzes = await MorningQuiz.find({
             "user_id": user_id,
             "created_at": {"$gte": start_date, "$lte": end_date},
-            "how_many_hours_of_sleep": {"$ne": None},
-            "completed": True
+            "how_many_hours_of_sleep": {"$ne": None}
         }).to_list()
         
         # Групуємо по датах
@@ -233,8 +232,7 @@ class StatisticsGenerator:
         morning_quizzes = await MorningQuiz.find({
             "user_id": user_id,
             "created_at": {"$gte": start_date, "$lte": end_date},
-            "how_do_you_feel_today": {"$ne": None},
-            "completed": True
+            "how_do_you_feel_today": {"$ne": None}
         }).to_list()
         
         # Групуємо по датах
@@ -274,8 +272,7 @@ class StatisticsGenerator:
         morning_quizzes = await MorningQuiz.find({
             "user_id": user_id,
             "created_at": {"$gte": start_date, "$lte": end_date},
-            "weight": {"$ne": None},
-            "completed": True
+            "weight": {"$ne": None}
         }).to_list()
         
         # Групуємо по датах
