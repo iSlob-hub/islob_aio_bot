@@ -514,7 +514,8 @@ class WebStatisticsGenerator:
                     pointBorderColor: '#00BFFF',
                     pointHoverBackgroundColor: '#00BFFF',
                     pointHoverBorderColor: '#00BFFF',
-                    tension: 0.4,
+                    tension: 0.12, // легке згладжування
+                    cubicInterpolationMode: 'monotone', // без хвиль та з повагою до однакових значень
                     fill: true,
                     spanGaps: true
                 }]
