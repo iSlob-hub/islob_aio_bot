@@ -11,7 +11,12 @@ from app.db.models import (
     User,
     MorningQuiz,
     TrainingSession,
+    TrainingFileHistory,
+    ScheduledTrainingDelivery,
+    ScheduledTrainingStatus,
 )
+from app.utils.training_preview import generate_training_preview_from_pdf
+from pathlib import Path
 from app.statistics_scheduler import statistics_scheduler
 from zoneinfo import ZoneInfo
 from croniter import croniter
@@ -128,6 +133,14 @@ class BotScheduler:
                 "interval",
                 minutes=1,
                 id="send_gym_reminder_notifications",
+                replace_existing=True,
+            )
+
+            self.scheduler.add_job(
+                self.send_scheduled_training_deliveries,
+                "interval",
+                minutes=1,
+                id="send_scheduled_training_deliveries",
                 replace_existing=True,
             )
 
@@ -419,6 +432,114 @@ class BotScheduler:
 
         except Exception as e:
             print(f"Failed to send custom notifications: {e}")
+
+    async def send_scheduled_training_deliveries(self):
+        """Deliver scheduled trainings with preview and update user training data."""
+        now = datetime.now(tz=zone_info)
+        pending = await ScheduledTrainingDelivery.find(
+            {
+                "status": ScheduledTrainingStatus.PENDING,
+                "send_at": {"$lte": now},
+            }
+        ).to_list()
+
+        if not pending:
+            return
+
+        for scheduled in pending:
+            try:
+                user = await User.find_one(User.telegram_id == scheduled.user_id)
+                if not user:
+                    scheduled.status = ScheduledTrainingStatus.FAILED
+                    scheduled.error_message = "User not found"
+                    scheduled.sent_at = now
+                    await scheduled.save()
+                    continue
+
+                file_url = scheduled.training_file_url or user.training_file_url
+                preview_html = scheduled.training_preview or user.training_preview
+                filename = scheduled.training_filename
+
+                if not file_url:
+                    scheduled.status = ScheduledTrainingStatus.FAILED
+                    scheduled.error_message = "No training file URL to send"
+                    scheduled.sent_at = now
+                    await scheduled.save()
+                    continue
+
+                # Generate preview on-the-fly if missing
+                if not preview_html:
+                    file_parts = Path(file_url.lstrip("/")).parts
+                    base_dir = Path(__file__).resolve().parents[1]
+                    files_dir = base_dir / "internal_files"
+                    if len(file_parts) >= 3 and file_parts[0] == "files":
+                        file_path = files_dir / Path(*file_parts[1:])
+                    else:
+                        file_path = files_dir / str(user.telegram_id) / Path(file_url).name
+
+                    if not file_path.exists():
+                        scheduled.status = ScheduledTrainingStatus.FAILED
+                        scheduled.error_message = f"Файл не знайдено: {file_path}"
+                        scheduled.sent_at = now
+                        await scheduled.save()
+                        continue
+
+                    try:
+                        pdf_bytes = file_path.read_bytes()
+                        preview_html = await generate_training_preview_from_pdf(pdf_bytes)
+                    except Exception as e:
+                        scheduled.status = ScheduledTrainingStatus.FAILED
+                        scheduled.error_message = f"Не вдалося згенерувати превʼю: {e}"
+                        scheduled.sent_at = now
+                        await scheduled.save()
+                        continue
+
+                # Apply training to the user (with possibly regenerated preview)
+                user.training_file_url = file_url
+                user.training_preview = preview_html
+                user.training_preview_generated_at = now
+                user.training_preview_error = None
+
+                history_entry = TrainingFileHistory(
+                    filename=filename or (file_url.split("/")[-1] if file_url else "training.pdf"),
+                    sent_at=now,
+                    file_url=file_url,
+                )
+                if not user.training_file_history:
+                    user.training_file_history = []
+                user.training_file_history.append(history_entry)
+                await user.save()
+
+                keyboard = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="Підглянути що там 🫣",
+                                callback_data="preview_training",
+                            )
+                        ]
+                    ]
+                )
+
+                await self.bot.send_message(
+                    chat_id=int(scheduled.user_id),
+                    text="🎉 Ура! Тренер запланував нову програму. Готові стартувати?",
+                    reply_markup=keyboard,
+                    disable_web_page_preview=True,
+                )
+
+                scheduled.status = ScheduledTrainingStatus.SENT
+                scheduled.sent_at = now
+                scheduled.error_message = None
+                scheduled.training_preview = preview_html
+                await scheduled.save()
+
+            except Exception as e:
+                scheduled.status = ScheduledTrainingStatus.FAILED
+                scheduled.error_message = str(e)
+                scheduled.sent_at = now
+                await scheduled.save()
+                print(f"Failed to send scheduled training to {scheduled.user_id}: {e}")
 
     async def send_gym_reminder_notifications(self):
         try:

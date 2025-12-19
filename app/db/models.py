@@ -10,6 +10,13 @@ class TrainingGoal(str, Enum):
     BUILD_MUSCLE = "Набір м'язової маси"
     MAINTAIN_FITNESS = "Підтримка форми"
 
+
+class TrainingFileHistory(BaseModel):
+    filename: str
+    sent_at: datetime
+    file_url: Optional[str] = None
+
+
 class User(Document):
     telegram_id: str
     full_name: str
@@ -21,6 +28,10 @@ class User(Document):
     payed_days_left: int = 28 # 4 weeks -> default payment, -1 -> means unlimited
     paused_payment: bool = False
     training_file_url: Optional[str] = None
+    training_preview: Optional[str] = None
+    training_preview_generated_at: Optional[datetime] = None
+    training_preview_error: Optional[str] = None
+    training_file_history: Optional[List[TrainingFileHistory]] = None
     
     # Timezone settings
     country: Optional[str] = "Україна"  # Country name
@@ -63,6 +74,29 @@ class Notification(Document):
 
     class Settings:
         name = "notifications"
+
+
+class ScheduledTrainingStatus(str, Enum):
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class ScheduledTrainingDelivery(Document):
+    user_id: Indexed(str)
+    send_at: datetime  # Kyiv time with tzinfo
+    send_at_user_time: Optional[datetime] = None
+    training_file_url: Optional[str] = None
+    training_preview: Optional[str] = None
+    training_filename: Optional[str] = None
+    status: ScheduledTrainingStatus = ScheduledTrainingStatus.PENDING
+    error_message: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.now)
+    sent_at: Optional[datetime] = None
+
+    class Settings:
+        name = "scheduled_training_deliveries"
 
 
 class MorningQuiz(Document):
