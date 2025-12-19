@@ -2,13 +2,21 @@ from fastapi import FastAPI, Request, Query, Depends, UploadFile, File, HTTPExce
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 import logging
 
 logger = logging.getLogger(__name__)
 from app.db.database import init_db
-from app.db.models import User, TrainingSession, MorningQuiz, Notification
+from app.db.models import (
+    User,
+    TrainingSession,
+    MorningQuiz,
+    Notification,
+    TrainingFileHistory,
+    ScheduledTrainingDelivery,
+    ScheduledTrainingStatus,
+)
 from app.constants import COUNTRIES_WITH_TIMEZONES
 from typing import Optional
 from fastapi.encoders import jsonable_encoder
@@ -19,7 +27,10 @@ from web_app.notifications_router import router as notifications_router
 from web_app.bot_settings_router import router as bot_settings_router
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pathlib import Path
+from urllib.parse import quote_plus
 from fastapi.staticfiles import StaticFiles
+from app.utils.training_preview import generate_training_preview_from_pdf
+from zoneinfo import ZoneInfo
 
 load_dotenv()
 
@@ -201,13 +212,22 @@ async def user_profile(request: Request, telegram_id: str = Query(...), user: Us
             }
         )
 
+    scheduled_deliveries = await ScheduledTrainingDelivery.find(
+        ScheduledTrainingDelivery.user_id == telegram_id
+    ).sort("send_at").to_list()
+
     return templates.TemplateResponse(
         "profile.html",
         {
             "request": request,
             "user": user_profile,
             "current_user": user,
-            "countries": COUNTRIES_WITH_TIMEZONES
+            "countries": COUNTRIES_WITH_TIMEZONES,
+            "preview_status": request.query_params.get("preview_status"),
+            "preview_message": request.query_params.get("preview_message"),
+            "schedule_status": request.query_params.get("schedule_status"),
+            "schedule_message": request.query_params.get("schedule_message"),
+            "scheduled_deliveries": scheduled_deliveries,
         }
     )
 
@@ -220,21 +240,208 @@ async def upload_training_file(
     user: User = Depends(get_admin_user)
 ):
     recipient = await User.find_one(User.telegram_id == user_telegram_id)
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Користувача не знайдено")
+
     # Save uploads under the absolute internal files directory
     user_dir = FILES_DIR / user_telegram_id
     user_dir.mkdir(parents=True, exist_ok=True)
 
-    file_path = user_dir / file.filename
+    safe_filename = Path(file.filename).name
+    file_path = user_dir / safe_filename
     with open(file_path, "wb") as f:
         content = await file.read()
         f.write(content)
 
-    file_url = f"/files/{user_telegram_id}/{file.filename}"
+    file_url = f"/files/{user_telegram_id}/{safe_filename}"
 
     recipient.training_file_url = file_url
+    recipient.training_preview = None
+    recipient.training_preview_generated_at = None
+    recipient.training_preview_error = None
+
+    preview_status = None
+    preview_message = None
+
+    try:
+        preview_text = await generate_training_preview_from_pdf(content)
+        recipient.training_preview = preview_text
+        recipient.training_preview_generated_at = datetime.now()
+        preview_status = "success"
+        preview_message = "Превʼю згенеровано."
+    except Exception as e:
+        logger.error("Failed to generate training preview for %s: %s", user_telegram_id, e, exc_info=True)
+        recipient.training_preview_error = str(e)
+        preview_status = "error"
+        preview_message = "Не вдалося згенерувати превʼю. Перевірте PDF або ключ OpenAI."
+
     await recipient.save()
 
-    return RedirectResponse(f"/profile?telegram_id={user_telegram_id}", status_code=302)
+    redirect_url = f"/profile?telegram_id={user_telegram_id}"
+    if preview_status:
+        redirect_url += f"&preview_status={preview_status}"
+        if preview_message:
+            redirect_url += f"&preview_message={quote_plus(preview_message)}"
+
+    return RedirectResponse(redirect_url, status_code=302)
+
+
+@app.post("/update-training-preview")
+async def update_training_preview(
+    request: Request,
+    telegram_id: str = Form(...),
+    preview_html: str = Form(""),
+    user: User = Depends(get_admin_user)
+):
+    """Зберегти вручну відредаговане превʼю тренування."""
+    recipient = await User.find_one(User.telegram_id == telegram_id)
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Користувача не знайдено")
+
+    new_preview = (preview_html or "").strip()
+    if not new_preview:
+        redirect_url = f"/profile?telegram_id={telegram_id}&preview_status=error&preview_message={quote_plus('Превʼю не може бути порожнім.')}"
+        return RedirectResponse(redirect_url, status_code=302)
+
+    recipient.training_preview = new_preview
+    recipient.training_preview_generated_at = datetime.now()
+    recipient.training_preview_error = None
+    await recipient.save()
+
+    redirect_url = f"/profile?telegram_id={telegram_id}&preview_status=success&preview_message={quote_plus('Превʼю збережено.')}"
+    return RedirectResponse(redirect_url, status_code=302)
+
+
+@app.post("/schedule-training-delivery")
+async def schedule_training_delivery(
+    request: Request,
+    telegram_id: str = Form(...),
+    scheduled_at_kyiv: str = Form(...),
+    user: User = Depends(get_admin_user)
+):
+    """Запланувати відправку тренування та превʼю на вказаний час (Київ)."""
+    recipient = await User.find_one(User.telegram_id == telegram_id)
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Користувача не знайдено")
+
+    if not recipient.training_file_url:
+        redirect_url = f"/profile?telegram_id={telegram_id}&schedule_status=error&schedule_message={quote_plus('Спочатку завантажте файл тренування.')}"
+        return RedirectResponse(redirect_url, status_code=302)
+
+    try:
+        kyiv_dt_naive = datetime.strptime(scheduled_at_kyiv, "%Y-%m-%dT%H:%M")
+        kyiv_dt = kyiv_dt_naive.replace(tzinfo=ZoneInfo("Europe/Kyiv"))
+    except ValueError:
+        redirect_url = f"/profile?telegram_id={telegram_id}&schedule_status=error&schedule_message={quote_plus('Невірний формат дати/часу.')}"
+        return RedirectResponse(redirect_url, status_code=302)
+
+    user_offset = recipient.timezone_offset or 0
+    user_local_dt = kyiv_dt + timedelta(hours=user_offset)
+
+    file_url = recipient.training_file_url
+    filename = file_url.split("/")[-1] if file_url else None
+
+    preview_html = recipient.training_preview
+    if not preview_html:
+        if not filename:
+            redirect_url = f"/profile?telegram_id={telegram_id}&schedule_status=error&schedule_message={quote_plus('Не знайдено файл для генерації превʼю.')}"
+            return RedirectResponse(redirect_url, status_code=302)
+        file_path = FILES_DIR / telegram_id / filename
+        if not file_path.exists():
+            redirect_url = f"/profile?telegram_id={telegram_id}&schedule_status=error&schedule_message={quote_plus('Файл для превʼю не знайдено на сервері.')}"
+            return RedirectResponse(redirect_url, status_code=302)
+        try:
+            pdf_bytes = file_path.read_bytes()
+            preview_html = await generate_training_preview_from_pdf(pdf_bytes)
+        except Exception as e:
+            logger.error("Failed to generate preview during scheduling for %s: %s", telegram_id, e, exc_info=True)
+            redirect_url = f"/profile?telegram_id={telegram_id}&schedule_status=error&schedule_message={quote_plus('Не вдалося згенерувати превʼю для розсилки.')}"
+            return RedirectResponse(redirect_url, status_code=302)
+
+    scheduled_entry = ScheduledTrainingDelivery(
+        user_id=telegram_id,
+        send_at=kyiv_dt,
+        send_at_user_time=user_local_dt,
+        training_file_url=recipient.training_file_url,
+        training_preview=preview_html,
+        training_filename=filename,
+        status=ScheduledTrainingStatus.PENDING,
+    )
+    await scheduled_entry.save()
+
+    message = f"Відправка запланована на {kyiv_dt.strftime('%Y-%m-%d %H:%M')} (Київ) / {user_local_dt.strftime('%Y-%m-%d %H:%M')} (час користувача)"
+    redirect_url = f"/profile?telegram_id={telegram_id}&schedule_status=success&schedule_message={quote_plus(message)}"
+    return RedirectResponse(redirect_url, status_code=302)
+
+
+@app.post("/cancel-scheduled-training")
+async def cancel_scheduled_training(
+    request: Request,
+    telegram_id: str = Form(...),
+    delivery_id: str = Form(...),
+    user: User = Depends(get_admin_user)
+):
+    """Скасувати заплановану відправку тренування."""
+    delivery = await ScheduledTrainingDelivery.get(delivery_id)
+    if not delivery or delivery.user_id != telegram_id:
+        raise HTTPException(status_code=404, detail="Заплановану відправку не знайдено")
+
+    if delivery.status != ScheduledTrainingStatus.PENDING:
+        redirect_url = f"/profile?telegram_id={telegram_id}&schedule_status=error&schedule_message={quote_plus('Можна скасувати лише заплановані (pending) відправки.')}"
+        return RedirectResponse(redirect_url, status_code=302)
+
+    delivery.status = ScheduledTrainingStatus.CANCELLED
+    delivery.sent_at = datetime.now(tz=ZoneInfo("Europe/Kyiv"))
+    await delivery.save()
+
+    redirect_url = f"/profile?telegram_id={telegram_id}&schedule_status=success&schedule_message={quote_plus('Заплановану відправку скасовано.')}"
+    return RedirectResponse(redirect_url, status_code=302)
+
+
+@app.post("/delete-scheduled-training")
+async def delete_scheduled_training(
+    request: Request,
+    telegram_id: str = Form(...),
+    delivery_id: str = Form(...),
+    user: User = Depends(get_admin_user)
+):
+    """Видалити відправку, що вже не в статусі pending."""
+    delivery = await ScheduledTrainingDelivery.get(delivery_id)
+    if not delivery or delivery.user_id != telegram_id:
+        raise HTTPException(status_code=404, detail="Заплановану відправку не знайдено")
+
+    if delivery.status == ScheduledTrainingStatus.PENDING:
+        redirect_url = f"/profile?telegram_id={telegram_id}&schedule_status=error&schedule_message={quote_plus('Пендінг відправки не видаляємо — спершу скасуйте.')}"
+        return RedirectResponse(redirect_url, status_code=302)
+
+    await delivery.delete()
+    redirect_url = f"/profile?telegram_id={telegram_id}&schedule_status=success&schedule_message={quote_plus('Відправку видалено.')}"
+    return RedirectResponse(redirect_url, status_code=302)
+
+
+@app.post("/update-scheduled-preview")
+async def update_scheduled_preview(
+    request: Request,
+    telegram_id: str = Form(...),
+    delivery_id: str = Form(...),
+    preview_html: str = Form(""),
+    user: User = Depends(get_admin_user)
+):
+    """Оновити превʼю для запланованої відправки."""
+    delivery = await ScheduledTrainingDelivery.get(delivery_id)
+    if not delivery or delivery.user_id != telegram_id:
+        raise HTTPException(status_code=404, detail="Заплановану відправку не знайдено")
+
+    content = (preview_html or "").strip()
+    if not content:
+        redirect_url = f"/profile?telegram_id={telegram_id}&schedule_status=error&schedule_message={quote_plus('Превʼю не може бути порожнім.')}"
+        return RedirectResponse(redirect_url, status_code=302)
+
+    delivery.training_preview = content
+    await delivery.save()
+
+    redirect_url = f"/profile?telegram_id={telegram_id}&schedule_status=success&schedule_message={quote_plus('Превʼю оновлено для запланованої відправки.')}"
+    return RedirectResponse(redirect_url, status_code=302)
 
 
 @app.post("/notify-training-assigned")
@@ -266,7 +473,18 @@ async def notify_training_assigned(
             text="🎉 Ура! Тренер оновив тобі програму. Погнали її затестимо!",
             reply_markup=keyboard
         )
-        
+
+        filename = recipient.training_file_url.split("/")[-1] if recipient.training_file_url else "training.pdf"
+        history_entry = TrainingFileHistory(
+            filename=filename,
+            sent_at=datetime.now(),
+            file_url=recipient.training_file_url
+        )
+        if not recipient.training_file_history:
+            recipient.training_file_history = []
+        recipient.training_file_history.append(history_entry)
+        await recipient.save()
+
         logger.info(f"✅ Training notification sent to user {telegram_id}")
         
     except Exception as e:

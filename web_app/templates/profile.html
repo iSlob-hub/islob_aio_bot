@@ -43,6 +43,22 @@
 .country-search-wrapper .clear-search:hover {
     color: #dc3545;
 }
+.preview-box {
+    white-space: pre-wrap;
+    background: linear-gradient(135deg, #fdfdfd, #f5f7fa);
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 15px;
+    font-family: "Menlo", "Consolas", monospace;
+}
+.upload-spinner {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    color: #0d6efd;
+    font-weight: 600;
+}
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -105,6 +121,118 @@ document.addEventListener('DOMContentLoaded', function() {
         countrySearch.dispatchEvent(new Event('input'));
         countrySearch.focus();
     });
+
+    // Spinner for training upload
+    const uploadForm = document.getElementById('uploadTrainingForm');
+    const uploadSpinner = document.getElementById('uploadSpinner');
+    const uploadSpinnerText = document.getElementById('uploadSpinnerText');
+    const uploadBtn = document.getElementById('uploadSubmitBtn');
+    const uploadIcon = document.getElementById('uploadIcon');
+    const uploadBtnText = document.getElementById('uploadBtnText');
+    const previewCollapseEl = document.getElementById('trainingPreviewCollapse');
+    const togglePreviewBtn = document.getElementById('togglePreviewBtn');
+    const previewToggleIcon = document.getElementById('previewToggleIcon');
+    const previewToggleText = document.getElementById('previewToggleText');
+    const scheduledAtKyivInput = document.getElementById('scheduleModalDatetime');
+    const userTimeDisplay = document.getElementById('scheduleUserTime');
+    const userOffsetHours = {{ user.timezone_offset or 0 }};
+    const scheduledPreviewMap = {};
+    {% if scheduled_deliveries %}
+    {% for item in scheduled_deliveries %}
+    scheduledPreviewMap["{{ item.id }}"] = {{ (item.training_preview or "") | tojson }};
+    {% endfor %}
+    {% endif %}
+
+    if (uploadForm) {
+        uploadForm.addEventListener('submit', function() {
+            if (uploadSpinner) uploadSpinner.classList.remove('d-none');
+            if (uploadSpinnerText) uploadSpinnerText.style.display = 'flex';
+            if (uploadIcon) uploadIcon.classList.add('d-none');
+            if (uploadBtnText) uploadBtnText.textContent = 'Завантаження...';
+            if (uploadBtn) {
+                uploadBtn.disabled = true;
+                uploadBtn.classList.add('disabled');
+            }
+        });
+    }
+
+    if (previewCollapseEl && togglePreviewBtn && previewToggleIcon && previewToggleText) {
+        const setExpanded = (expanded) => {
+            togglePreviewBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            if (expanded) {
+                togglePreviewBtn.classList.remove('btn-outline-secondary');
+                togglePreviewBtn.classList.add('btn-secondary');
+                previewToggleIcon.textContent = '➖';
+                previewToggleText.textContent = 'Сховати превʼю';
+            } else {
+                togglePreviewBtn.classList.add('btn-outline-secondary');
+                togglePreviewBtn.classList.remove('btn-secondary');
+                previewToggleIcon.textContent = '➕';
+                previewToggleText.textContent = 'Показати превʼю';
+            }
+        };
+
+        previewCollapseEl.addEventListener('show.bs.collapse', () => setExpanded(true));
+        previewCollapseEl.addEventListener('hide.bs.collapse', () => setExpanded(false));
+    }
+
+    const updateUserLocalTime = () => {
+        if (!scheduledAtKyivInput || !userTimeDisplay) return;
+        const value = scheduledAtKyivInput.value;
+        if (!value) {
+            userTimeDisplay.textContent = '—';
+            return;
+        }
+        const [datePart, timePart] = value.split('T');
+        if (!datePart || !timePart) {
+            userTimeDisplay.textContent = 'Невірний час';
+            return;
+        }
+        const [year, month, day] = datePart.split('-').map(Number);
+        const [hour, minute] = timePart.split(':').map(Number);
+        const baseUtc = new Date(Date.UTC(year, month - 1, day, hour, minute));
+        baseUtc.setUTCHours(baseUtc.getUTCHours() + userOffsetHours);
+        const pad = (n) => String(n).padStart(2, '0');
+        const display = `${baseUtc.getUTCFullYear()}-${pad(baseUtc.getUTCMonth() + 1)}-${pad(baseUtc.getUTCDate())} ${pad(baseUtc.getUTCHours())}:${pad(baseUtc.getUTCMinutes())}`;
+        userTimeDisplay.textContent = display;
+    };
+
+    if (scheduledAtKyivInput) {
+        const pad = (n) => String(n).padStart(2, '0');
+        const now = new Date();
+        now.setMinutes(now.getMinutes() + 60);
+        const defaultValue = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+        if (!scheduledAtKyivInput.value) {
+            scheduledAtKyivInput.value = defaultValue;
+        }
+        updateUserLocalTime();
+        scheduledAtKyivInput.addEventListener('input', updateUserLocalTime);
+    }
+
+    // Scheduled preview modal
+    const scheduledPreviewButtons = document.querySelectorAll('.scheduled-preview-btn');
+    const scheduledPreviewDeliveryId = document.getElementById('scheduledPreviewDeliveryId');
+    const scheduledPreviewTextarea = document.getElementById('scheduledPreviewTextarea');
+    const scheduledPreviewRender = document.getElementById('scheduledPreviewRender');
+    const scheduledPreviewRefreshBtn = document.getElementById('scheduledPreviewRefreshBtn');
+
+    const renderScheduledPreview = () => {
+        if (!scheduledPreviewRender || !scheduledPreviewTextarea) return;
+        scheduledPreviewRender.innerHTML = scheduledPreviewTextarea.value || '—';
+    };
+
+    scheduledPreviewButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.deliveryId;
+            if (scheduledPreviewDeliveryId) scheduledPreviewDeliveryId.value = id;
+            if (scheduledPreviewTextarea) scheduledPreviewTextarea.value = scheduledPreviewMap[id] || '';
+            renderScheduledPreview();
+        });
+    });
+
+    if (scheduledPreviewRefreshBtn) {
+        scheduledPreviewRefreshBtn.addEventListener('click', renderScheduledPreview);
+    }
 });
 </script>
 {% endblock %}
@@ -293,6 +421,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
         <h3><i class="fas fa-file-alt"></i> Файл тренування</h3>
 
+        {% if schedule_status == 'success' %}
+        <div class="alert alert-success">
+            {{ schedule_message or "Розсилку заплановано." }}
+        </div>
+        {% elif schedule_status == 'error' %}
+        <div class="alert alert-danger">
+            {{ schedule_message or "Не вдалося запланувати розсилку." }}
+        </div>
+        {% endif %}
+
         <div class="mb-4">
         {% if user.training_file_url %}
             <div class="alert alert-success d-flex justify-content-between align-items-center">
@@ -320,18 +458,211 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         {% endif %}
 
-        <form action="/upload-training-file?user_telegram_id={{ user.telegram_id }}" method="post" enctype="multipart/form-data" class="mt-3">
+        <form id="uploadTrainingForm" action="/upload-training-file?user_telegram_id={{ user.telegram_id }}" method="post" enctype="multipart/form-data" class="mt-3">
             <div class="mb-3">
             <label for="file" class="form-label">Виберіть файл для завантаження</label>
             <input type="file" name="file" id="file" class="form-control" required>
             </div>
-            <button type="submit" class="btn btn-primary">
-                <i class="fas fa-upload"></i> Присвоїти тренування
-            </button>
+            <div class="d-flex align-items-center gap-2">
+                <button type="submit" class="btn btn-primary" id="uploadSubmitBtn">
+                    <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true" id="uploadSpinner"></span>
+                    <i class="fas fa-upload" id="uploadIcon"></i>
+                    <span id="uploadBtnText">Присвоїти тренування</span>
+                </button>
+                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#scheduleModal" {% if not user.training_file_url %}disabled{% endif %}>
+                    <i class="fas fa-calendar-alt"></i> Запланувати відправку
+                </button>
+            </div>
+            <div class="upload-spinner" id="uploadSpinnerText">
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                Завантажуємо файл та генеруємо превʼю...
+            </div>
         </form>
+
+        <!-- Модалка планування -->
+        <div class="modal fade" id="scheduleModal" tabindex="-1" aria-labelledby="scheduleModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="scheduleModalLabel">Запланувати відправку</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <form method="post" action="/schedule-training-delivery">
+                        <div class="modal-body">
+                            <input type="hidden" name="telegram_id" value="{{ user.telegram_id }}">
+                            <div class="mb-3">
+                                <label for="scheduleModalDatetime" class="form-label">Дата та час (Київ)</label>
+                                <input type="datetime-local" class="form-control" id="scheduleModalDatetime" name="scheduled_at_kyiv" required>
+                                <div class="form-text">Час клієнта: <span id="scheduleUserTime">—</span> (офсет {{ user.timezone_offset or 0 }} год від Києва)</div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрити</button>
+                            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Запланувати</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
+
+        <!-- Модалка превʼю запланованої відправки -->
+        <div class="modal fade" id="scheduledPreviewModal" tabindex="-1" aria-labelledby="scheduledPreviewModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="scheduledPreviewModalLabel">Заплановане превʼю</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <form method="post" action="/update-scheduled-preview">
+                        <div class="modal-body">
+                            <input type="hidden" name="telegram_id" value="{{ user.telegram_id }}">
+                            <input type="hidden" name="delivery_id" id="scheduledPreviewDeliveryId">
+                            <div class="mb-3">
+                                <label for="scheduledPreviewTextarea" class="form-label">HTML (доступні &lt;b&gt;, &lt;i&gt;, &lt;a&gt;)</label>
+                                <textarea class="form-control" id="scheduledPreviewTextarea" name="preview_html" rows="10"></textarea>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="form-text">Попередній перегляд (Telegram HTML)</div>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="scheduledPreviewRefreshBtn">Переглянути</button>
+                            </div>
+                            <div class="border rounded p-3 bg-light" id="scheduledPreviewRender" style="min-height:120px; white-space:pre-line;"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрити</button>
+                            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Зберегти зміни</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        {% if scheduled_deliveries %}
+        <div class="card mt-3">
+            <div class="card-header">Майбутні відправки</div>
+            <ul class="list-group list-group-flush">
+                {% for item in scheduled_deliveries %}
+                {% set status_value = item.status.value if item.status is not string else item.status %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <div><strong>Київ:</strong> {{ item.send_at.strftime('%Y-%m-%d %H:%M') if item.send_at else '—' }}</div>
+                        <div class="small text-muted"><strong>Час клієнта:</strong> {{ item.send_at_user_time.strftime('%Y-%m-%d %H:%M') if item.send_at_user_time else '—' }}</div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge {% if status_value == 'pending' %}bg-warning text-dark{% elif status_value == 'sent' %}bg-success{% elif status_value == 'cancelled' %}bg-secondary{% else %}bg-danger{% endif %}">
+                            {{ status_value }}
+                        </span>
+                        <button type="button" class="btn btn-outline-info btn-sm scheduled-preview-btn" data-delivery-id="{{ item.id }}" data-bs-toggle="modal" data-bs-target="#scheduledPreviewModal">Переглянути превʼю</button>
+                        {% if status_value == 'pending' %}
+                            <form method="post" action="/cancel-scheduled-training" class="m-0">
+                                <input type="hidden" name="telegram_id" value="{{ user.telegram_id }}">
+                                <input type="hidden" name="delivery_id" value="{{ item.id }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Скасувати</button>
+                            </form>
+                        {% else %}
+                            <form method="post" action="/delete-scheduled-training" class="m-0">
+                                <input type="hidden" name="telegram_id" value="{{ user.telegram_id }}">
+                                <input type="hidden" name="delivery_id" value="{{ item.id }}">
+                                <button type="submit" class="btn btn-outline-secondary btn-sm">Видалити</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        </div>
+
+        <h3><i class="fas fa-eye"></i> Превʼю тренування</h3>
+
+        {% if preview_status == 'success' %}
+        <div class="alert alert-success">
+            {{ preview_message or "Превʼю оновлено." }}
+        </div>
+        {% elif preview_status == 'error' %}
+        <div class="alert alert-danger">
+            {{ preview_message or "Не вдалося згенерувати превʼю." }}
+        </div>
+        {% endif %}
+
+        <div class="card mb-3">
+        <div class="card-header">
+            Редагувати превʼю вручну
+        </div>
+        <div class="card-body">
+            <form action="/update-training-preview" method="post">
+                <input type="hidden" name="telegram_id" value="{{ user.telegram_id }}">
+                <div class="mb-3">
+                    <label for="previewHtml" class="form-label">HTML для превʼю (доступні теги &lt;b&gt;, &lt;i&gt;, &lt;a&gt;)</label>
+                    <textarea class="form-control" id="previewHtml" name="preview_html" rows="10" placeholder="Введіть HTML превʼю">{{ user.training_preview or '' }}</textarea>
+                    <div class="form-text">Збереження змін одразу оновить превʼю у боті.</div>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Зберегти превʼю
+                </button>
+            </form>
+        </div>
+        </div>
+
+        {% if user.training_preview %}
+        <button class="btn btn-outline-secondary btn-sm mb-2" type="button"
+                data-bs-toggle="collapse" data-bs-target="#trainingPreviewCollapse"
+                aria-expanded="false" aria-controls="trainingPreviewCollapse"
+                id="togglePreviewBtn">
+            <span id="previewToggleIcon">➕</span> <span id="previewToggleText">Показати превʼю</span>
+        </button>
+        <div class="collapse" id="trainingPreviewCollapse">
+        <div class="card mb-3">
+            <div class="card-body preview-box">
+                {{ user.training_preview | safe }}
+            </div>
+            {% if user.training_preview_generated_at %}
+            <div class="card-footer text-muted">
+                Оновлено: {{ user.training_preview_generated_at.strftime('%Y-%m-%d %H:%M') }}
+            </div>
+            {% endif %}
+        </div>
+        </div>
+        {% elif user.training_preview_error %}
+        <div class="alert alert-danger">
+            ❌ Помилка генерації превʼю: {{ user.training_preview_error }}
+        </div>
+        {% elif user.training_file_url %}
+        <div class="alert alert-info">
+            ⏳ Превʼю генерується. Якщо воно не зʼявиться, спробуйте перезавантажити файл.
+        </div>
+        {% else %}
+        <div class="alert alert-secondary">
+            Завантажте тренувальний файл, щоб отримати превʼю.
+        </div>
+        {% endif %}
+
+        <hr class="my-4">
+
+        <h4><i class="fas fa-history"></i> Історія відправок файлів</h4>
+        {% set history = (user.training_file_history or []) | sort(attribute='sent_at', reverse=True) %}
+        {% if history %}
+        <ul class="list-group mb-3">
+            {% for item in history %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="fw-bold">{{ item.filename }}</div>
+                    {% if item.file_url %}
+                    <div class="small text-muted">{{ item.file_url }}</div>
+                    {% endif %}
+                </div>
+                <span class="badge bg-light text-dark">
+                    {{ item.sent_at.strftime('%Y-%m-%d %H:%M') }}
+                </span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div class="alert alert-secondary">
+            Історія відправок поки порожня.
+        </div>
+        {% endif %}
 
     </div>
 </div>
 {% endblock %}
-

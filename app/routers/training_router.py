@@ -16,22 +16,43 @@ from app.db.models import TrainingSession, Notification, User, NotificationType
 from app.keyboards import get_main_menu_keyboard
 from app.config import settings
 import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 import app.keyboards as kb
 from app.utils.text_templates import sync_get_template, get_template, format_template
 
 import os
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-app_root = Path(__file__).resolve().parent.parent
-
 
 training_router = Router()
+
+
+def _prepare_preview_for_telegram(preview_html: str) -> str:
+    """Convert stored HTML preview into Telegram-safe HTML."""
+    if not preview_html:
+        return ""
+
+    text = re.sub(r"(?i)<br\s*/?>", "\n", preview_html)
+    # Remove tags except <b>, <i>, <a>
+    text = re.sub(r"(?i)<(?!/?(?:b|i|a)\b)[^>]+>", "", text)
+
+    # Normalize spacing: drop empty lines and leave a single blank line before section headers
+    lines = [line.strip() for line in text.splitlines()]
+    normalized: list[str] = []
+    for line in lines:
+        if not line:
+            continue
+
+        # Detect headers even if wrapped in <b> tags
+        if normalized and re.match(r"^(?:<b>)?[🏋️🧘🔥]", line):
+            normalized.append("")  # blank line before new section
+
+        normalized.append(line)
+
+    return "\n".join(normalized).strip()
 
 
 @training_router.message(
@@ -597,117 +618,39 @@ async def handle_stress_level(callback_query: CallbackQuery, state: FSMContext) 
 
 @training_router.callback_query(F.data == "preview_training")
 async def preview_training(callback_query: CallbackQuery) -> None:
-    """Генерує превʼю тренування через OpenAI Responses API"""
     user = await User.find_one(User.telegram_id == str(callback_query.from_user.id))
     
-    if not user or not user.training_file_url:
+    if not user:
         await callback_query.message.answer(
             text="❌ Тренування не знайдено. Зверніться до адміністратора."
         )
         await callback_query.answer()
         return
-    
-    await callback_query.message.answer(
-        text="⏳ Генерую превʼю тренування, зачекай хвилинку..."
-    )
 
-    await callback_query.answer()
-    
-    # Запускаємо генерацію в окремій задачі, щоб не блокувати бота
-    import asyncio
-    asyncio.create_task(generate_training_preview(callback_query, user))
-
-
-async def generate_training_preview(callback_query: CallbackQuery, user: User) -> None:
-    """Асинхронна генерація превʼю тренування"""
-    try:
-        # Читаємо промпт
-        prompt_path = Path(__file__).resolve().parent.parent.parent / "web_app" / "training_preview_prompt.txt"
-        with open(prompt_path, 'r', encoding='utf-8') as f:
-            system_prompt = f.read()
-        
-        # Формуємо повний URL до файлу
-        if user.training_file_url.startswith("/files/"):
-            base_host = settings.BASE_HOST
-            if not base_host:
-                await callback_query.message.answer(
-                    text="❌ Помилка конфігурації сервера."
-                )
-                return
-            
-            file_url = f"{base_host}{user.training_file_url}"
-            
-            # Використовуємо AsyncOpenAI для неблокуючих викликів
-            from openai import AsyncOpenAI
-            import httpx
-            
-            client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-            
-            # Завантажуємо файл з URL
-            async with httpx.AsyncClient(timeout=30.0) as http_client:
-                response = await http_client.get(file_url)
-                response.raise_for_status()
-                file_content = response.content
-            
-            # Отримуємо ім'я файлу з URL
-            filename = user.training_file_url.split('/')[-1]
-            if not filename.endswith('.pdf'):
-                filename = 'training.pdf'
-            
-            # Завантажуємо файл до OpenAI (асинхронно) з правильним форматом
-            uploaded_file = await client.files.create(
-                file=(filename, file_content, "application/pdf"),
-                purpose="assistants"
-            )
-            
-            file_id = uploaded_file.id
-            
-            # Використовуємо Responses API для аналізу PDF (асинхронно)
-            response = await client.responses.create(
-                model="gpt-4o",
-                input=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "input_text", "text": system_prompt + "\n\nПроаналізуй цей PDF з тренуванням і створи превʼю за інструкцією."},
-                        {"type": "input_file", "file_id": file_id}
-                    ]
-                }]
-            )
-            
-            # Отримуємо відповідь
-            preview_text = response.output_text
-            
-            # Відправляємо превʼю користувачу (можливо довгий текст, треба розбити)
-            if len(preview_text) > 4000:
-                # Розбиваємо на частини
-                parts = [preview_text[i:i+4000] for i in range(0, len(preview_text), 4000)]
-                await callback_query.message.answer(
-                    text=f"🏋️ Превʼю твого тренування (частина 1/{len(parts)}):\n\n{parts[0]}"
-                )
-                for i, part in enumerate(parts[1:], start=2):
-                    await callback_query.message.answer(
-                        text=f"🏋️ Превʼю твого тренування (частина {i}/{len(parts)}):\n\n{part}"
-                    )
-            else:
-                await callback_query.message.answer(
-                    text=f"🏋️ Превʼю твого тренування:\n\n{preview_text}"
-                )
-            
-            # Очищаємо ресурси (асинхронно)
-            try:
-                await client.files.delete(uploaded_file.id)
-            except Exception as cleanup_error:
-                print(f"Warning: Could not cleanup resources: {cleanup_error}")
-            
-        else:
-            await callback_query.message.answer(
-                text="❌ Формат URL файлу не підтримується."
-            )
-        
-    except Exception as e:
-        print(f"❌ Error generating training preview: {e}")
-        import traceback
-        traceback.print_exc()
+    if not user.training_file_url:
         await callback_query.message.answer(
-            text=f"❌ Помилка при генерації превʼю: {str(e)}"
+            text="❌ Тренування не знайдено. Зверніться до тренера."
         )
+        await callback_query.answer()
+        return
+
+    if not user.training_preview:
+        message = "❌ Превʼю тренування поки що відсутнє. Зверніться до тренера."
+        if user.training_preview_error:
+            message = (
+                "❌ Не вдалося згенерувати превʼю тренування. "
+                "Зверніться до тренера, щоб оновити файл."
+            )
+
+        await callback_query.message.answer(text=message)
+        await callback_query.answer()
+        return
+
+    preview_text = _prepare_preview_for_telegram(user.training_preview)
+    await callback_query.answer()
+
+    await callback_query.message.answer(
+        text=f"🏋️ Превʼю твого тренування:\n\n{preview_text}",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )

@@ -11,6 +11,7 @@ from app.db.models import (
     TrainingSession,
     UserStatistics,
     TextTemplate,
+    ScheduledTrainingDelivery,
 )
 
 
@@ -30,6 +31,7 @@ async def init_db():
         TrainingSession,
         UserStatistics,
         TextTemplate,
+        ScheduledTrainingDelivery,
     ]
 
     await init_beanie(
