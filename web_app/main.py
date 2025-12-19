@@ -27,7 +27,7 @@ from web_app.notifications_router import router as notifications_router
 from web_app.bot_settings_router import router as bot_settings_router
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 from fastapi.staticfiles import StaticFiles
 from app.utils.training_preview import generate_training_preview_from_pdf
 from zoneinfo import ZoneInfo
@@ -227,6 +227,8 @@ async def user_profile(request: Request, telegram_id: str = Query(...), user: Us
             "preview_message": request.query_params.get("preview_message"),
             "schedule_status": request.query_params.get("schedule_status"),
             "schedule_message": request.query_params.get("schedule_message"),
+            "training_status": request.query_params.get("training_status"),
+            "training_message": request.query_params.get("training_message"),
             "scheduled_deliveries": scheduled_deliveries,
         }
     )
@@ -309,6 +311,65 @@ async def update_training_preview(
     await recipient.save()
 
     redirect_url = f"/profile?telegram_id={telegram_id}&preview_status=success&preview_message={quote_plus('Превʼю збережено.')}"
+    return RedirectResponse(redirect_url, status_code=302)
+
+
+@app.post("/delete-training-file")
+async def delete_training_file(
+    request: Request,
+    telegram_id: str = Form(...),
+    user: User = Depends(get_admin_user)
+):
+    """Повністю видалити файл тренування та очистити превʼю."""
+    recipient = await User.find_one(User.telegram_id == telegram_id)
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Користувача не знайдено")
+
+    if not recipient.training_file_url:
+        redirect_url = (
+            f"/profile?telegram_id={telegram_id}"
+            f"&training_status=error&training_message={quote_plus('Файл тренування не призначено.')}"
+        )
+        return RedirectResponse(redirect_url, status_code=302)
+
+    file_url = recipient.training_file_url
+    parsed_url = urlparse(file_url)
+    filename = Path(parsed_url.path).name or "training.pdf"
+
+    file_parts = Path(parsed_url.path.lstrip("/")).parts
+    if len(file_parts) >= 3 and file_parts[0] == "files":
+        file_path = FILES_DIR / Path(*file_parts[1:])
+        try:
+            if file_path.exists():
+                file_path.unlink()
+                if file_path.parent.exists() and not any(file_path.parent.iterdir()):
+                    file_path.parent.rmdir()
+        except Exception as e:
+            logger.warning(
+                "Failed to delete training file from disk for %s: %s",
+                telegram_id,
+                e,
+            )
+
+    history_entry = TrainingFileHistory(
+        filename=f"🗑️ Видалено: {filename}",
+        sent_at=datetime.now(),
+        file_url=None,
+    )
+    if not recipient.training_file_history:
+        recipient.training_file_history = []
+    recipient.training_file_history.append(history_entry)
+
+    recipient.training_file_url = None
+    recipient.training_preview = None
+    recipient.training_preview_generated_at = None
+    recipient.training_preview_error = None
+    await recipient.save()
+
+    redirect_url = (
+        f"/profile?telegram_id={telegram_id}"
+        f"&training_status=success&training_message={quote_plus('Файл тренування видалено.')}"
+    )
     return RedirectResponse(redirect_url, status_code=302)
 
 

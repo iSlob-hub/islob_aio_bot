@@ -431,6 +431,16 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
         {% endif %}
 
+        {% if training_status == 'success' %}
+        <div class="alert alert-success">
+            {{ training_message or "Файл тренування видалено." }}
+        </div>
+        {% elif training_status == 'error' %}
+        <div class="alert alert-danger">
+            {{ training_message or "Не вдалося видалити файл тренування." }}
+        </div>
+        {% endif %}
+
         <div class="mb-4">
         {% if user.training_file_url %}
             <div class="alert alert-success d-flex justify-content-between align-items-center">
@@ -450,6 +460,12 @@ document.addEventListener('DOMContentLoaded', function() {
             <form action="/notify-training-assigned?telegram_id={{ user.telegram_id }}" method="post" class="mt-3">
                 <button type="submit" class="btn btn-success">
                     <i class="fas fa-paper-plane"></i> Відправити сповіщення користувачу
+                </button>
+            </form>
+            <form action="/delete-training-file" method="post" class="mt-2" onsubmit="return confirm('Видалити файл тренування для користувача?');">
+                <input type="hidden" name="telegram_id" value="{{ user.telegram_id }}">
+                <button type="submit" class="btn btn-outline-danger">
+                    <i class="fas fa-trash"></i> Видалити файл тренування
                 </button>
             </form>
         {% else %}
