@@ -514,7 +514,7 @@ class BotScheduler:
                     inline_keyboard=[
                         [
                             InlineKeyboardButton(
-                                text="Підглянути що там 🫣",
+                                text="Підглянути, що там 🫣",
                                 callback_data="preview_training",
                             )
                         ]
@@ -523,7 +523,7 @@ class BotScheduler:
 
                 await self.bot.send_message(
                     chat_id=int(scheduled.user_id),
-                    text="🎉 Ура! Тренер запланував нову програму. Готові стартувати?",
+                    text="🎉 Ура! Тренер запланував нову програму!",
                     reply_markup=keyboard,
                     disable_web_page_preview=True,
                 )

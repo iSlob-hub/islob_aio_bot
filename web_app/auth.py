@@ -10,7 +10,7 @@ from fastapi.responses import RedirectResponse
 
 load_dotenv()
 
-SECRET = "your_session_secret"
+SECRET = os.environ.get("WEB_APP_SESSION_SECRET", "your_session_secret")
 API_TOKEN = os.environ.get("BOT_TOKEN")
 
 serializer = URLSafeSerializer(SECRET)

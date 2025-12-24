@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тренування - {{ filename }}</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background-color: #111;
+        }
+        .viewer-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+        }
+        .fallback {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            color: #fff;
+            text-align: center;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .fallback a {
+            color: #fff;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <iframe
+        class="viewer-frame"
+        referrerpolicy="no-referrer"
+        src="/static/pdfjs/web/viewer.html?file={{ pdf_url | urlencode }}"
+        title="PDF Viewer"
+        allow="fullscreen"
+    ></iframe>
+    <noscript>
+        <div class="fallback">
+            <div>
+                Увімкніть JavaScript для перегляду PDF або відкрийте файл напряму:
+                <br>
+                <a href="{{ pdf_url }}">Відкрити PDF</a>
+            </div>
+        </div>
+    </noscript>
+</body>
+</html>

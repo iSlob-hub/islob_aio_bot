@@ -5,7 +5,6 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReplyKeyboardRemove,
-    URLInputFile,
 )
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -19,6 +18,11 @@ import datetime
 from zoneinfo import ZoneInfo
 import app.keyboards as kb
 from app.utils.text_templates import sync_get_template, get_template, format_template
+from app.utils.training_links import (
+    build_training_file_token,
+    build_training_view_url,
+    extract_training_filename,
+)
 
 import os
 import re
@@ -53,6 +57,16 @@ def _prepare_preview_for_telegram(preview_html: str) -> str:
         normalized.append(line)
 
     return "\n".join(normalized).strip()
+
+
+def _build_training_view_url_for_user(user: User) -> str | None:
+    if not user or not user.training_file_url:
+        return None
+    filename = extract_training_filename(user.training_file_url)
+    if not filename:
+        return None
+    token = build_training_file_token(user.telegram_id, filename)
+    return build_training_view_url(settings.BASE_HOST, token)
 
 
 @training_router.message(
@@ -169,28 +183,24 @@ async def handle_how_do_you_feel_before(
         await callback_query.message.answer(
             text=await get_template("sending_training_file")
         )
-        base_host = settings.BASE_HOST
-        print(f"DEBUG: BASE_HOST = {base_host}, training_file_url = {user.training_file_url}")
-        if base_host:
-            try:
-                full_url = f"{base_host}{user.training_file_url}"
-                print(f"DEBUG: Full URL = {full_url}")
-                training_pdf = URLInputFile(
-                    url=full_url,
-                    filename="training_session.pdf",
-                )
-                
-                await callback_query.message.answer_document(
-                    document=training_pdf, caption=await get_template("here_is_your_training_file")
-                )
-                print(f"DEBUG: Successfully sent training PDF to {callback_query.from_user.id}")
-            except Exception as e:
-                print(f"Failed to send training PDF: {e}")
-                await callback_query.message.answer(
-                    text=await get_template("training_file_unavailable")
-                )
+        training_view_url = _build_training_view_url_for_user(user)
+        if training_view_url:
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="Відкрити тренування 🏋️",
+                            url=training_view_url,
+                        )
+                    ]
+                ]
+            )
+            await callback_query.message.answer(
+                text=await get_template("here_is_your_training_file"),
+                reply_markup=keyboard,
+                disable_web_page_preview=True,
+            )
         else:
-            print("DEBUG: BASE_HOST is empty or None")
             await callback_query.message.answer(
                 text=await get_template("training_file_unavailable")
             )
