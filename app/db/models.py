@@ -106,6 +106,7 @@ class MorningQuiz(Document):
     weight: Optional[float] = None
     is_going_to_gym: Optional[bool] = None
     gym_attendance_time: Optional[datetime] = None
+    is_test: bool = False
 
     completed: bool = False
     created_at: datetime = Field(default_factory=datetime.now)

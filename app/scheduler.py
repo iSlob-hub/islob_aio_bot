@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.mongodb import MongoDBJobStore
 from apscheduler.executors.asyncio import AsyncIOExecutor
@@ -189,7 +189,10 @@ class BotScheduler:
                 f"Processing notification for {notification.user_id} at {notification_time}, last sent date: {notification_last_sent_date}"
             )
             if notification_last_sent_date:
-                notification_last_sent_date = notification_last_sent_date.date()
+                if isinstance(notification_last_sent_date, datetime):
+                    notification_last_sent_date = notification_last_sent_date.date()
+                elif not isinstance(notification_last_sent_date, date):
+                    notification_last_sent_date = None
                 if notification_last_sent_date == datetime.now(tz=zone_info).date():
                     logger.debug(
                         f"Skipping notification for {notification.user_id} at {notification_time}, already sent today"
@@ -228,9 +231,7 @@ class BotScheduler:
                     ),
                 )
                 logger.debug(f"✅ Sent morning quiz to {recipient}")
-                notification.system_data = {
-                    "last_sent_date": datetime.now(tz=zone_info).date(),
-                }
+                notification.system_data["last_sent_date"] = datetime.now(tz=zone_info)
                 await notification.save()
             except Exception as e:
                 logger.debug(f"Failed to send morning quiz to {recipient}: {e}")
