@@ -1,4 +1,6 @@
 import re
+from datetime import datetime, date
+from zoneinfo import ZoneInfo
 from aiogram import F
 from aiogram.filters import Command, StateFilter
 from aiogram.types import Message
@@ -18,6 +20,8 @@ from app.keyboards import get_main_menu_keyboard, get_notifications_menu_keyboar
 from app.utils.bot_utils import is_valid_morning_time
 from app.utils.text_templates import get_template, format_template, sync_get_template
 
+KYIV_TIMEZONE = ZoneInfo("Europe/Kyiv")
+
 def generate_username_from_name(full_name: str) -> str:
     if not full_name:
         return "user"
@@ -32,6 +36,77 @@ def generate_username_from_name(full_name: str) -> str:
         return "user"
         
     return username
+
+
+def _normalize_sent_date(value: object) -> Optional[date]:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return None
+
+
+async def _daily_morning_quiz_already_sent(user_id: str) -> bool:
+    notification = await Notification.find_one(
+        Notification.user_id == str(user_id),
+        Notification.notification_type == NotificationType.DAILY_MORNING_NOTIFICATION,
+    )
+    if not notification or not notification.system_data:
+        return False
+    last_sent_date = _normalize_sent_date(notification.system_data.get("last_sent_date"))
+    if not last_sent_date:
+        return False
+    return last_sent_date == datetime.now(tz=KYIV_TIMEZONE).date()
+
+
+async def _mark_daily_morning_quiz_sent(user_id: str) -> None:
+    notification = await Notification.find_one(
+        Notification.user_id == str(user_id),
+        Notification.notification_type == NotificationType.DAILY_MORNING_NOTIFICATION,
+    )
+    if not notification:
+        return
+    if not notification.system_data:
+        notification.system_data = {}
+    notification.system_data["last_sent_date"] = datetime.now(tz=KYIV_TIMEZONE)
+    await notification.save()
+
+
+async def _send_morning_quiz_intro(message: Message, morning_quiz_id: str) -> None:
+    await message.answer(
+        text=await get_template("morning_quiz_intro"),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=await get_template("start_quiz_button"),
+                        callback_data=f"start_morning_quiz_{morning_quiz_id}",
+                    )
+                ]
+            ]
+        ),
+    )
+
+
+async def _start_morning_quiz_for_user(
+    message: Message,
+    *,
+    is_test: bool,
+    enforce_daily_limit: bool,
+) -> None:
+    user_telegram_id = message.from_user.id
+    if enforce_daily_limit and await _daily_morning_quiz_already_sent(user_telegram_id):
+        await message.answer(text=await get_template("morning_quiz_already_completed"))
+        return
+
+    morning_quiz = MorningQuiz(
+        user_id=str(user_telegram_id),
+        is_test=is_test,
+    )
+    await morning_quiz.save()
+    await _send_morning_quiz_intro(message, morning_quiz.id)
+    if enforce_daily_limit:
+        await _mark_daily_morning_quiz_sent(user_telegram_id)
 
 
 class InitialConversationState(StatesGroup):
@@ -369,25 +444,21 @@ async def process_report_problem(message: Message, state: FSMContext) -> None:
 async def cmd_morning_quiz(message: Message, state: FSMContext) -> None:
     if await ensure_onboarding_not_finished(message, state):
         return
-    user_telegram_id = message.from_user.id
-    morning_quiz = MorningQuiz(
-        user_id=str(user_telegram_id),
+    await _start_morning_quiz_for_user(
+        message,
+        is_test=False,
+        enforce_daily_limit=True,
     )
-    await morning_quiz.save()
-    morning_quiz_id = morning_quiz.id
 
-    await message.answer(
-        text=await get_template("morning_quiz_intro"),
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=await get_template("start_quiz_button"),
-                        callback_data=f"start_morning_quiz_{morning_quiz_id}",
-                    )
-                ]
-            ]
-        ),
+
+@main_router.message(Command("morning_quiz_test"), StateFilter(MainMenuState.main_menu))
+async def cmd_morning_quiz_test(message: Message, state: FSMContext) -> None:
+    if await ensure_onboarding_not_finished(message, state):
+        return
+    await _start_morning_quiz_for_user(
+        message,
+        is_test=True,
+        enforce_daily_limit=False,
     )
 
 
