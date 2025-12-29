@@ -137,18 +137,17 @@ async def training_file_viewer(request: Request, token: str):
 
     user_agent = (request.headers.get("user-agent") or "").lower()
     use_google_viewer = "android" in user_agent
-    viewer_url = (
-        f"https://docs.google.com/gview?embedded=1&url={quote_plus(absolute_pdf_url)}"
-        if use_google_viewer
-        else pdf_path
-    )
+    viewer_url = f"https://docs.google.com/gview?embedded=1&url={quote_plus(absolute_pdf_url)}"
+
+    if use_google_viewer:
+        return RedirectResponse(url=viewer_url)
 
     return templates.TemplateResponse(
         "training_public_viewer.html",
         {
             "request": request,
             "pdf_url": pdf_path,
-            "viewer_url": viewer_url,
+            "viewer_url": pdf_path,
             "filename": Path(filename).name,
         },
     )
