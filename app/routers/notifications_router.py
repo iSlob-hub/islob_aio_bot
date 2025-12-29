@@ -16,6 +16,7 @@ import app.keyboards as kb
 from app.db.models import Notification, NotificationType, User
 from app.utils.bot_utils import cron_to_human_readable
 from app.utils.text_templates import get_template, format_template
+from app.utils.morning_quiz_utils import get_active_morning_quiz_for_today
 
 notifications_router = Router()
 
@@ -38,9 +39,15 @@ async def _cancel_new_notification(message_or_callback, state: FSMContext):
 @notifications_router.message(StateFilter(MainMenuState.notifications_menu))
 async def process_notification_menu(message: Message, state: FSMContext) -> None:
     if message.text == tc.BACK_TO_MAIN_MENU_BUTTON:
+        active_quiz = await get_active_morning_quiz_for_today(
+            message.from_user.id,
+            is_test=None,
+        )
         await message.answer(
             text=await get_template("notif_back_to_main_menu"),
-            reply_markup=await kb.get_main_menu_keyboard(),
+            reply_markup=await kb.get_main_menu_keyboard(
+                include_morning_quiz_resume=bool(active_quiz),
+            ),
         )
         await state.set_state(MainMenuState.main_menu)
 
