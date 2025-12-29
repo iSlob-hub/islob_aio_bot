@@ -131,11 +131,24 @@ async def training_file_viewer(request: Request, token: str):
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Файл не знайдено")
 
+    pdf_path = f"/training-file/{token}/raw"
+    base_url = BASE_HOST or str(request.base_url).rstrip("/")
+    absolute_pdf_url = f"{base_url}{pdf_path}"
+
+    user_agent = (request.headers.get("user-agent") or "").lower()
+    use_google_viewer = "android" in user_agent
+    viewer_url = (
+        f"https://docs.google.com/gview?embedded=1&url={quote_plus(absolute_pdf_url)}"
+        if use_google_viewer
+        else pdf_path
+    )
+
     return templates.TemplateResponse(
         "training_public_viewer.html",
         {
             "request": request,
-            "pdf_url": f"/training-file/{token}/raw",
+            "pdf_url": pdf_path,
+            "viewer_url": viewer_url,
             "filename": Path(filename).name,
         },
     )
@@ -162,11 +175,12 @@ async def training_file_raw(token: str):
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Файл не знайдено")
 
+    response_headers = _training_file_cors_headers()
+    response_headers["Content-Disposition"] = f'inline; filename="{Path(filename).name}"'
     return FileResponse(
         file_path,
         media_type="application/pdf",
-        filename=Path(filename).name,
-        headers=_training_file_cors_headers(),
+        headers=response_headers,
     )
 
 
