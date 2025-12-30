@@ -27,7 +27,7 @@ from web_app.notifications_router import router as notifications_router
 from web_app.bot_settings_router import router as bot_settings_router
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pathlib import Path
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote, quote_plus, urlparse
 from app.utils.training_preview import generate_training_preview_from_pdf
 from zoneinfo import ZoneInfo
 from fastapi.staticfiles import StaticFiles
@@ -115,6 +115,16 @@ def _training_file_cors_headers() -> dict:
     }
 
 
+def _build_content_disposition(filename: str) -> str:
+    safe_name = Path(filename).name
+    ascii_name = safe_name.encode("ascii", "ignore").decode("ascii").strip()
+    if not ascii_name:
+        suffix = Path(safe_name).suffix
+        ascii_name = f"file{suffix or ''}"
+    quoted_utf8 = quote(safe_name, safe="")
+    return f'inline; filename="{ascii_name}"; filename*=UTF-8\'\'{quoted_utf8}'
+
+
 @app.get("/training-file/{token}", response_class=HTMLResponse)
 async def training_file_viewer(request: Request, token: str):
     try:
@@ -175,7 +185,7 @@ async def training_file_raw(token: str):
         raise HTTPException(status_code=404, detail="Файл не знайдено")
 
     response_headers = _training_file_cors_headers()
-    response_headers["Content-Disposition"] = f'inline; filename="{Path(filename).name}"'
+    response_headers["Content-Disposition"] = _build_content_disposition(filename)
     return FileResponse(
         file_path,
         media_type="application/pdf",
