@@ -84,6 +84,22 @@ async def start_training(message: Message, state: FSMContext) -> None:
     ).sort("-training_started_at").to_list(1)
 
     if active_sessions:
+        training_session_id = active_sessions[0].id
+        await state.update_data(training_session_id=str(training_session_id))
+        await message.answer(
+            text="Ти вже маєш розпочате тренування",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text=await get_template("finish_training_button"),
+                            callback_data=f"finish_training_{training_session_id}",
+                        )
+                    ]
+                ]
+            ),
+        )
+        await state.set_state(TrainingState.training_started)
         return
 
     # remove reply keyboard if it exists
