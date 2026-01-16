@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta
 from functools import wraps
 import logging
+import mimetypes
 
 logger = logging.getLogger(__name__)
 from app.db.database import init_db
@@ -33,6 +34,7 @@ from zoneinfo import ZoneInfo
 from fastapi.staticfiles import StaticFiles
 from app.utils.training_links import (
     BadSignature,
+    SignatureExpired,
     build_training_file_token,
     build_training_view_path,
     build_training_view_url,
@@ -60,19 +62,92 @@ app.include_router(statistics_router)
 app.include_router(notifications_router)
 app.include_router(bot_settings_router)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+BASE_DIR = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # Ensure the uploads directory exists and mount it using an absolute path
-FILES_DIR = Path(BASE_DIR).parent / "internal_files"
+FILES_DIR = BASE_DIR.parent / "internal_files"
 FILES_DIR.mkdir(parents=True, exist_ok=True)
-STATIC_DIR = Path(BASE_DIR) / "static"
+STATIC_DIR = BASE_DIR / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+@app.middleware("http")
+async def log_static_requests(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        headers = response.headers
+        logger.info(
+            "static_request path=%s status=%s content_type=%s content_length=%s cache_control=%s",
+            request.url.path,
+            response.status_code,
+            headers.get("content-type"),
+            headers.get("content-length"),
+            headers.get("cache-control"),
+        )
+    return response
 
 @app.on_event("startup")
 async def startup_event():
     await init_db()
+
+@app.get("/debug/static-check")
+async def debug_static_check():
+    base_dir = Path(__file__).resolve().parent
+    static_dir = (base_dir / "static").resolve()
+    targets = {
+        "pdf_min_js": static_dir / "pdfjs" / "build" / "pdf.min.js",
+        "pdf_worker_min_js": static_dir / "pdfjs" / "build" / "pdf.worker.min.js",
+        "legacy_pdf_min_js": static_dir / "pdfjs" / "legacy" / "build" / "pdf.min.js",
+        "legacy_pdf_worker_min_js": static_dir / "pdfjs" / "legacy" / "build" / "pdf.worker.min.js",
+    }
+    return {
+        "cwd": str(Path.cwd().resolve()),
+        "static_dir_configured": str(STATIC_DIR),
+        "static_dir_resolved": str(STATIC_DIR.resolve()),
+        "files": {
+            key: {"path": str(path.resolve()), "exists": path.exists()}
+            for key, path in targets.items()
+        },
+    }
+
+@app.get("/debug/pdfjs-smoke", response_class=HTMLResponse)
+async def debug_pdfjs_smoke():
+    html = """<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PDF.js Smoke</title>
+  </head>
+  <body>
+    <script src="/static/pdfjs/legacy/build/pdf.min.js"></script>
+    <script>
+      (async () => {
+        const pdfjsOk = !!window.pdfjsLib;
+        document.body.innerText = pdfjsOk ? "OK" : "FAIL";
+        async function headStatus(url) {
+          try {
+            const res = await fetch(url, { method: "HEAD" });
+            return `${res.status}${res.redirected ? ` (redirected to ${res.url})` : ""}`;
+          } catch (err) {
+            return `error: ${err && err.message ? err.message : String(err)}`;
+          }
+        }
+        const pdfHead = await headStatus("/static/pdfjs/legacy/build/pdf.min.js");
+        const workerHead = await headStatus("/static/pdfjs/legacy/build/pdf.worker.min.js");
+        document.body.innerText = [
+          `pdf.min.js HEAD: ${pdfHead}`,
+          `pdf.worker.min.js HEAD: ${workerHead}`,
+          `window.pdfjsLib: ${pdfjsOk ? "OK" : "FAIL"}`
+        ].join("\\n");
+      })();
+    </script>
+  </body>
+</html>"""
+    return HTMLResponse(content=html)
 
 
 def get_admin_user(user: User = Depends(get_current_user)) -> User:
@@ -111,7 +186,7 @@ def _training_file_cors_headers() -> dict:
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET,HEAD,OPTIONS",
         "Access-Control-Allow-Headers": "Range",
-        "Access-Control-Expose-Headers": "Accept-Ranges, Content-Range, Content-Length",
+        "Access-Control-Expose-Headers": "Accept-Ranges, Content-Range, Content-Length, Content-Disposition",
     }
 
 
@@ -129,7 +204,7 @@ def _build_content_disposition(filename: str) -> str:
 async def training_file_viewer(request: Request, token: str):
     try:
         data = parse_training_file_token(token)
-    except BadSignature:
+    except (BadSignature, SignatureExpired):
         raise HTTPException(status_code=404, detail="Invalid link")
 
     telegram_id = data.get("telegram_id")
@@ -141,23 +216,10 @@ async def training_file_viewer(request: Request, token: str):
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Файл не знайдено")
 
-    pdf_path = f"/training-file/{token}/raw"
-    base_url = BASE_HOST or str(request.base_url).rstrip("/")
-    absolute_pdf_url = f"{base_url}{pdf_path}"
-
-    user_agent = (request.headers.get("user-agent") or "").lower()
-    use_google_viewer = "android" in user_agent
-    viewer_url = f"https://docs.google.com/gview?embedded=1&url={quote_plus(absolute_pdf_url)}"
-
-    if use_google_viewer:
-        return RedirectResponse(url=viewer_url)
-
     return templates.TemplateResponse(
         "training_public_viewer.html",
         {
             "request": request,
-            "pdf_url": pdf_path,
-            "viewer_url": pdf_path,
             "filename": Path(filename).name,
         },
     )
@@ -172,7 +234,7 @@ async def training_file_raw_options(token: str):
 async def training_file_raw(token: str):
     try:
         data = parse_training_file_token(token)
-    except BadSignature:
+    except (BadSignature, SignatureExpired):
         raise HTTPException(status_code=404, detail="Invalid link")
 
     telegram_id = data.get("telegram_id")
@@ -186,6 +248,8 @@ async def training_file_raw(token: str):
 
     response_headers = _training_file_cors_headers()
     response_headers["Content-Disposition"] = _build_content_disposition(filename)
+    response_headers["Cache-Control"] = "private, max-age=0, must-revalidate"
+    response_headers["Pragma"] = "no-cache"
     return FileResponse(
         file_path,
         media_type="application/pdf",
