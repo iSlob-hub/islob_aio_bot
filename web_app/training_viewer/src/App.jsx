@@ -21,6 +21,14 @@ export default function App() {
   const resizeTimerRef = useRef(null);
   const linkServiceRef = useRef(null);
   const currentPageRef = useRef(1);
+  const scaleRef = useRef(1);
+  const pinchRef = useRef({
+    active: false,
+    startDistance: 0,
+    startScale: 1,
+    raf: 0,
+    nextScale: 1
+  });
 
   const [{ pdfUrl, filename }] = useState(getViewerConfig);
   const [pdfDoc, setPdfDoc] = useState(null);
@@ -118,6 +126,7 @@ export default function App() {
   }, [pdfDoc, pdfjs, scale]);
 
   useEffect(() => {
+    scaleRef.current = scale;
     if (!pdfDoc) return;
     if (!isEditing) {
       setPageInput(String(currentPage));
@@ -143,6 +152,68 @@ export default function App() {
   const updateZoom = (nextScale) => {
     setScale(clamp(nextScale, 0.6, 2.8));
   };
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const getDistance = (touches) => {
+      const [t1, t2] = touches;
+      const dx = t1.clientX - t2.clientX;
+      const dy = t1.clientY - t2.clientY;
+      return Math.hypot(dx, dy);
+    };
+
+    const scheduleScale = (nextScale) => {
+      pinchRef.current.nextScale = nextScale;
+      if (pinchRef.current.raf) return;
+      pinchRef.current.raf = window.requestAnimationFrame(() => {
+        pinchRef.current.raf = 0;
+        updateZoom(pinchRef.current.nextScale);
+      });
+    };
+
+    const onTouchStart = (event) => {
+      if (event.touches.length !== 2) return;
+      pinchRef.current.active = true;
+      pinchRef.current.startDistance = getDistance(event.touches);
+      pinchRef.current.startScale = scaleRef.current;
+    };
+
+    const onTouchMove = (event) => {
+      if (!pinchRef.current.active || event.touches.length !== 2) return;
+      event.preventDefault();
+      const currentDistance = getDistance(event.touches);
+      const ratio = currentDistance / pinchRef.current.startDistance;
+      const nextScale = pinchRef.current.startScale * ratio;
+      scheduleScale(clamp(nextScale, 0.6, 2.8));
+    };
+
+    const onTouchEnd = () => {
+      pinchRef.current.active = false;
+    };
+
+    const onWheel = (event) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      const factor = Math.exp(-event.deltaY / 300);
+      updateZoom(clamp(scaleRef.current * factor, 0.6, 2.8));
+    };
+
+    container.addEventListener("touchstart", onTouchStart, { passive: false });
+    container.addEventListener("touchmove", onTouchMove, { passive: false });
+    container.addEventListener("touchend", onTouchEnd, { passive: true });
+    container.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    container.addEventListener("wheel", onWheel, { passive: false });
+
+    return () => {
+      container.removeEventListener("touchstart", onTouchStart);
+      container.removeEventListener("touchmove", onTouchMove);
+      container.removeEventListener("touchend", onTouchEnd);
+      container.removeEventListener("touchcancel", onTouchEnd);
+      container.removeEventListener("wheel", onWheel);
+    };
+  }, []);
 
   const onPageInputChange = (event) => {
     setPageInput(event.target.value);
@@ -336,27 +407,6 @@ export default function App() {
             </div>
           </div>
           <div className="controls">
-            <div className="control-group">
-              <button
-                className="btn"
-                type="button"
-                onClick={() => updateZoom(scale - 0.15)}
-                aria-label="Зменшити"
-                disabled={status !== "ready"}
-              >
-                −
-              </button>
-              <div className="zoom-display">{Math.round(scale * 100)}%</div>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => updateZoom(scale + 0.15)}
-                aria-label="Збільшити"
-                disabled={status !== "ready"}
-              >
-                +
-              </button>
-            </div>
             <div className="control-group">
               <input
                 className="page-input"
