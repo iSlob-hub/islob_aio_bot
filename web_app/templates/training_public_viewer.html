@@ -7,38 +7,22 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>Тренування - {{ filename }}</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #0f1114;
-    }
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      background: var(--bg);
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-    }
-    #pdf-viewer { height: 100vh; }
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
+  <link rel="stylesheet" href="/static/training_viewer/training_viewer.css">
 </head>
 <body>
-  <div id="pdf-viewer"></div>
+  <div id="root"></div>
 
-  <script type="module">
-    import EmbedPDF from "https://cdn.jsdelivr.net/npm/@embedpdf/snippet@2/dist/embedpdf.js";
-
-    (function () {
-      var basePath = window.location.pathname.replace(/\/$/, "");
-      var pdfUrl = window.location.origin + basePath + "/raw";
-
-      EmbedPDF.init({
-        type: "container",
-        target: document.getElementById("pdf-viewer"),
-        src: pdfUrl,
-        theme: { preference: "system" }
-      });
-    })();
+  <script>
+    window.__TRAINING_VIEWER__ = {
+      filename: {{ filename | tojson }}
+    };
   </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.js"></script>
+  <script type="module" src="/static/training_viewer/training_viewer.js"></script>
 </body>
 </html>

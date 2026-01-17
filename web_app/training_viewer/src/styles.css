@@ -1,0 +1,267 @@
+:root {
+  color-scheme: light;
+  --bg: #e6e6fa;
+  --panel: #ffffff;
+  --ink: #1f1f2e;
+  --muted: #6b6b85;
+  --accent: #9370db;
+  --accent-soft: #ede4fb;
+  --border: #e1e1f0;
+  --shadow: 0 10px 30px rgba(25, 18, 50, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(900px 520px at 5% 0%, rgba(255, 215, 0, 0.18) 0%, transparent 60%),
+    radial-gradient(700px 420px at 95% 5%, rgba(147, 112, 219, 0.2) 0%, transparent 55%),
+    var(--bg);
+  color: var(--ink);
+  font-family: "Manrope", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(255, 250, 243, 0.9);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(10px);
+}
+
+.topbar-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.title-block {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.badge {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 8px 10px;
+  border-radius: 999px;
+}
+
+.title-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.title-text h1 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.01em;
+}
+
+.title-text span {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.control-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(40, 32, 80, 0.08);
+}
+
+.btn {
+  border: none;
+  background: var(--accent);
+  color: white;
+  border-radius: 999px;
+  width: 34px;
+  height: 34px;
+  font-size: 18px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(32, 18, 6, 0.18);
+}
+
+.zoom-display {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 48px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.page-input {
+  width: 54px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 8px;
+  text-align: center;
+  font-weight: 600;
+  background: white;
+  color: var(--ink);
+}
+
+.page-total {
+  font-size: 13px;
+  color: var(--muted);
+  min-width: 48px;
+  text-align: left;
+}
+
+.viewer {
+  padding: 20px 24px 28px;
+}
+
+.viewer-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  height: calc(100vh - 96px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.pdf-container {
+  flex: 1;
+  overflow: auto;
+  padding: 20px 18px 30px;
+}
+
+.loading {
+  margin: 80px auto;
+  text-align: center;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.page-shell {
+  position: relative;
+  margin: 0 auto 22px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(25, 18, 50, 0.12);
+  overflow: hidden;
+}
+
+.page-shell canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  position: relative;
+  z-index: 1;
+}
+
+.page-shell .textLayer,
+.page-shell .annotationLayer {
+  position: absolute;
+  inset: 0;
+}
+
+.page-shell .textLayer {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.page-shell .annotationLayer {
+  z-index: 3;
+  pointer-events: auto;
+}
+
+.annotationLayer a {
+  color: var(--accent);
+  text-decoration: none;
+  pointer-events: auto;
+}
+
+.annotationLayer .link-annotation {
+  position: absolute;
+  display: block;
+  pointer-events: auto;
+  cursor: pointer;
+  background: transparent;
+}
+
+.annotationLayer a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+  .topbar-inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .viewer {
+    padding: 14px;
+  }
+
+  .viewer-shell {
+    height: calc(100vh - 140px);
+  }
+
+  .title-text span {
+    max-width: 100%;
+  }
+}
