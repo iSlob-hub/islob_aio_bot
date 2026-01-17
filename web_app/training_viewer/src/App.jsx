@@ -14,6 +14,7 @@ const getViewerConfig = () => {
 
 export default function App() {
   const containerRef = useRef(null);
+  const pagesRef = useRef(null);
   const pageWrappersRef = useRef([]);
   const observerRef = useRef(null);
   const renderIdRef = useRef(0);
@@ -22,6 +23,7 @@ export default function App() {
   const linkServiceRef = useRef(null);
   const currentPageRef = useRef(1);
   const scaleRef = useRef(1);
+  const zoomCommitTimerRef = useRef(null);
   const pinchRef = useRef({
     active: false,
     startDistance: 0,
@@ -33,7 +35,8 @@ export default function App() {
   const [{ pdfUrl, filename }] = useState(getViewerConfig);
   const [pdfDoc, setPdfDoc] = useState(null);
   const [status, setStatus] = useState("loading");
-  const [scale, setScale] = useState(1);
+  const [renderScale, setRenderScale] = useState(1);
+  const [previewScale, setPreviewScale] = useState(1);
   const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState("1");
@@ -85,7 +88,8 @@ export default function App() {
     pdfDoc.getPage(1).then((page) => {
       if (cancelled) return;
       const fit = getFitScale(page);
-      setScale(fit);
+      setRenderScale(fit);
+      setPreviewScale(fit);
     });
 
     return () => {
@@ -102,6 +106,7 @@ export default function App() {
     const renderAllPages = async () => {
       if (isRenderingRef.current) return;
       isRenderingRef.current = true;
+      const restorePage = currentPageRef.current;
       clearPages();
 
       for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum += 1) {
@@ -111,7 +116,7 @@ export default function App() {
 
       if (!cancelled && renderId === renderIdRef.current) {
         attachPageObservers();
-        scrollToPage(currentPageRef.current, "auto");
+        scrollToPage(restorePage, "auto");
       }
 
       isRenderingRef.current = false;
@@ -123,15 +128,15 @@ export default function App() {
       cancelled = true;
       isRenderingRef.current = false;
     };
-  }, [pdfDoc, pdfjs, scale]);
+  }, [pdfDoc, pdfjs, renderScale]);
 
   useEffect(() => {
-    scaleRef.current = scale;
+    scaleRef.current = renderScale;
     if (!pdfDoc) return;
     if (!isEditing) {
       setPageInput(String(currentPage));
     }
-  }, [currentPage, isEditing]);
+  }, [currentPage, isEditing, renderScale]);
 
   useEffect(() => {
     if (!pdfDoc) return;
@@ -140,7 +145,9 @@ export default function App() {
       clearTimeout(resizeTimerRef.current);
       resizeTimerRef.current = setTimeout(() => {
         pdfDoc.getPage(1).then((page) => {
-          setScale(getFitScale(page));
+          const fit = getFitScale(page);
+          setRenderScale(fit);
+          setPreviewScale(fit);
         });
       }, 160);
     };
@@ -149,8 +156,12 @@ export default function App() {
     return () => window.removeEventListener("resize", handleResize);
   }, [pdfDoc]);
 
-  const updateZoom = (nextScale) => {
-    setScale(clamp(nextScale, 0.6, 2.8));
+  const scheduleCommit = (nextScale) => {
+    clearTimeout(zoomCommitTimerRef.current);
+    zoomCommitTimerRef.current = setTimeout(() => {
+      setRenderScale(nextScale);
+      setPreviewScale(nextScale);
+    }, 180);
   };
 
   useEffect(() => {
@@ -169,7 +180,7 @@ export default function App() {
       if (pinchRef.current.raf) return;
       pinchRef.current.raf = window.requestAnimationFrame(() => {
         pinchRef.current.raf = 0;
-        updateZoom(pinchRef.current.nextScale);
+        setPreviewScale(pinchRef.current.nextScale);
       });
     };
 
@@ -185,19 +196,22 @@ export default function App() {
       event.preventDefault();
       const currentDistance = getDistance(event.touches);
       const ratio = currentDistance / pinchRef.current.startDistance;
-      const nextScale = pinchRef.current.startScale * ratio;
-      scheduleScale(clamp(nextScale, 0.6, 2.8));
+      const nextScale = clamp(pinchRef.current.startScale * ratio, 0.6, 2.8);
+      scheduleScale(nextScale);
     };
 
     const onTouchEnd = () => {
       pinchRef.current.active = false;
+      scheduleCommit(pinchRef.current.nextScale || scaleRef.current);
     };
 
     const onWheel = (event) => {
       if (!event.ctrlKey) return;
       event.preventDefault();
       const factor = Math.exp(-event.deltaY / 300);
-      updateZoom(clamp(scaleRef.current * factor, 0.6, 2.8));
+      const nextScale = clamp(scaleRef.current * factor, 0.6, 2.8);
+      setPreviewScale(nextScale);
+      scheduleCommit(nextScale);
     };
 
     container.addEventListener("touchstart", onTouchStart, { passive: false });
@@ -243,8 +257,8 @@ export default function App() {
   };
 
   const clearPages = () => {
-    if (!containerRef.current) return;
-    containerRef.current.innerHTML = "";
+    if (!pagesRef.current) return;
+    pagesRef.current.innerHTML = "";
     pageWrappersRef.current = [];
     if (observerRef.current) {
       observerRef.current.disconnect();
@@ -277,7 +291,7 @@ export default function App() {
 
   const renderPage = async (pageNum) => {
     const page = await pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale });
+    const viewport = page.getViewport({ scale: renderScale });
 
     const wrapper = document.createElement("div");
     wrapper.className = "page-shell";
@@ -299,7 +313,7 @@ export default function App() {
     annotationLayerDiv.style.setProperty("--scale-factor", viewport.scale);
     wrapper.appendChild(annotationLayerDiv);
 
-    containerRef.current.appendChild(wrapper);
+    pagesRef.current.appendChild(wrapper);
     pageWrappersRef.current.push(wrapper);
 
     await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
@@ -435,6 +449,14 @@ export default function App() {
       <main className="viewer">
         <section className="viewer-shell">
           <div className="pdf-container" ref={containerRef}>
+            <div
+              className="pdf-pages"
+              ref={pagesRef}
+              style={{
+                transform: `scale(${previewScale / renderScale})`,
+                transformOrigin: "top center"
+              }}
+            />
             {status === "loading" && <div className="loading">Завантажуємо PDF…</div>}
             {status === "error" && (
               <div className="loading">
