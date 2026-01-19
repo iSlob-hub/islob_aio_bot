@@ -223,9 +223,6 @@ async def handle_how_do_you_feel_before(
 
     # Перевіряємо чи є файл тренування у користувача
     if user.training_file_url:
-        await callback_query.message.answer(
-            text=await get_template("sending_training_file")
-        )
         training_view_url = _build_training_view_url_for_user(user)
         if training_view_url:
             keyboard = InlineKeyboardMarkup(

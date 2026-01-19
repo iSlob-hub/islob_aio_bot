@@ -154,7 +154,7 @@ export default function App() {
                     disableRange: true,
                     disableStream: true
                   }}
-                  loading={<div className="loading">Завантажуємо PDF…</div>}
+                  loading={<div className="loading">Ще трошечки почекай і все буде 🙏</div>}
                   error={<div className="loading">Не вдалося завантажити PDF.</div>}
                   onLoadSuccess={(pdf) => {
                     setNumPages(pdf.numPages);
@@ -167,7 +167,9 @@ export default function App() {
               </TransformComponent>
             </TransformWrapper>
 
-            {status === "loading" && <div className="loading">Завантажуємо PDF…</div>}
+            {status === "loading" && (
+              <div className="loading">Ще трошечки почекай і все буде 🙏</div>
+            )}
             {status === "error" && (
               <div className="loading">
                 Не вдалося завантажити PDF. Перевірте посилання або спробуйте ще раз.
