@@ -1,4 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Document, Page, pdfjs } from "react-pdf";
+import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
+import "react-pdf/dist/esm/Page/AnnotationLayer.css";
+import "react-pdf/dist/esm/Page/TextLayer.css";
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -12,270 +16,57 @@ const getViewerConfig = () => {
   };
 };
 
+pdfjs.GlobalWorkerOptions.workerSrc =
+  `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+
 export default function App() {
   const containerRef = useRef(null);
-  const pagesRef = useRef(null);
-  const pageWrappersRef = useRef([]);
+  const pageRefs = useRef([]);
   const observerRef = useRef(null);
-  const renderIdRef = useRef(0);
-  const isRenderingRef = useRef(false);
-  const resizeTimerRef = useRef(null);
-  const linkServiceRef = useRef(null);
-  const currentPageRef = useRef(1);
-  const scaleRef = useRef(1);
-  const zoomCommitTimerRef = useRef(null);
-  const pinchRef = useRef({
-    active: false,
-    startDistance: 0,
-    startScale: 1,
-    raf: 0,
-    nextScale: 1
-  });
 
   const [{ pdfUrl, filename }] = useState(getViewerConfig);
-  const [pdfDoc, setPdfDoc] = useState(null);
+  const [numPages, setNumPages] = useState(0);
+  const [pageWidth, setPageWidth] = useState(760);
   const [status, setStatus] = useState("loading");
-  const [renderScale, setRenderScale] = useState(1);
-  const [previewScale, setPreviewScale] = useState(1);
-  const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState("1");
   const [isEditing, setIsEditing] = useState(false);
 
-  const pdfjs = window.pdfjsLib;
-  const pdfjsViewer = window.pdfjsViewer;
   const isIOS = useMemo(
     () => /iP(ad|hone|od)/.test(navigator.userAgent || ""),
     []
   );
 
   useEffect(() => {
-    if (!pdfjs) {
-      setStatus("error");
-      return;
-    }
-
-    pdfjs.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-
-    if (pdfjsViewer && pdfjsViewer.SimpleLinkService) {
-      linkServiceRef.current = new pdfjsViewer.SimpleLinkService();
-      if (pdfjsViewer.LinkTarget) {
-        linkServiceRef.current.externalLinkTarget = pdfjsViewer.LinkTarget.BLANK;
-      }
-    }
-
-    setStatus("loading");
-    pdfjs
-      .getDocument({ url: pdfUrl, disableWorker: isIOS })
-      .promise.then((pdf) => {
-        if (linkServiceRef.current && linkServiceRef.current.setDocument) {
-          linkServiceRef.current.setDocument(pdf);
-        }
-        setPdfDoc(pdf);
-        setPageCount(pdf.numPages);
-        setStatus("ready");
-      })
-      .catch(() => {
-        setStatus("error");
-      });
-  }, [pdfjs, pdfjsViewer, pdfUrl]);
-
-  useEffect(() => {
-    if (!pdfDoc || !containerRef.current) return;
-    let cancelled = false;
-
-    pdfDoc.getPage(1).then((page) => {
-      if (cancelled) return;
-      const fit = getFitScale(page);
-      setRenderScale(fit);
-      setPreviewScale(fit);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [pdfDoc]);
-
-  useEffect(() => {
-    if (!pdfDoc || !containerRef.current || !pdfjs) return;
-
-    let cancelled = false;
-    const renderId = ++renderIdRef.current;
-
-    const renderAllPages = async () => {
-      if (isRenderingRef.current) return;
-      isRenderingRef.current = true;
-      const restorePage = currentPageRef.current;
-      clearPages();
-
-      for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum += 1) {
-        if (cancelled || renderId !== renderIdRef.current) break;
-        await renderPage(pageNum);
-      }
-
-      if (!cancelled && renderId === renderIdRef.current) {
-        attachPageObservers();
-        scrollToPage(restorePage, "auto");
-      }
-
-      isRenderingRef.current = false;
+    const updateWidth = () => {
+      if (!containerRef.current) return;
+      const viewportWidth = window.visualViewport
+        ? window.visualViewport.width
+        : window.innerWidth;
+      const containerWidth = containerRef.current.clientWidth;
+      const available = Math.min(containerWidth, viewportWidth);
+      const gutter = available < 520 ? 16 : 32;
+      const nextWidth = available - gutter;
+      setPageWidth(clamp(nextWidth, 280, 1200));
     };
 
-    renderAllPages();
-
-    return () => {
-      cancelled = true;
-      isRenderingRef.current = false;
-    };
-  }, [pdfDoc, pdfjs, renderScale]);
-
-  useEffect(() => {
-    scaleRef.current = renderScale;
-    if (!pdfDoc) return;
-    if (!isEditing) {
-      setPageInput(String(currentPage));
-    }
-  }, [currentPage, isEditing, renderScale]);
-
-  useEffect(() => {
-    if (!pdfDoc) return;
-
-    const handleResize = () => {
-      clearTimeout(resizeTimerRef.current);
-      resizeTimerRef.current = setTimeout(() => {
-        pdfDoc.getPage(1).then((page) => {
-          const fit = getFitScale(page);
-          setRenderScale(fit);
-          setPreviewScale(fit);
-        });
-      }, 160);
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [pdfDoc]);
-
-  const scheduleCommit = (nextScale) => {
-    clearTimeout(zoomCommitTimerRef.current);
-    zoomCommitTimerRef.current = setTimeout(() => {
-      setRenderScale(nextScale);
-      setPreviewScale(nextScale);
-    }, 180);
-  };
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const getDistance = (touches) => {
-      const [t1, t2] = touches;
-      const dx = t1.clientX - t2.clientX;
-      const dy = t1.clientY - t2.clientY;
-      return Math.hypot(dx, dy);
-    };
-
-    const scheduleScale = (nextScale) => {
-      pinchRef.current.nextScale = nextScale;
-      if (pinchRef.current.raf) return;
-      pinchRef.current.raf = window.requestAnimationFrame(() => {
-        pinchRef.current.raf = 0;
-        setPreviewScale(pinchRef.current.nextScale);
-      });
-    };
-
-    const onTouchStart = (event) => {
-      if (event.touches.length !== 2) return;
-      pinchRef.current.active = true;
-      pinchRef.current.startDistance = getDistance(event.touches);
-      pinchRef.current.startScale = scaleRef.current;
-    };
-
-    const onTouchMove = (event) => {
-      if (!pinchRef.current.active || event.touches.length !== 2) return;
-      event.preventDefault();
-      const currentDistance = getDistance(event.touches);
-      const ratio = currentDistance / pinchRef.current.startDistance;
-      const nextScale = clamp(pinchRef.current.startScale * ratio, 0.6, 2.8);
-      scheduleScale(nextScale);
-    };
-
-    const onTouchEnd = () => {
-      pinchRef.current.active = false;
-      scheduleCommit(pinchRef.current.nextScale || scaleRef.current);
-    };
-
-    const onWheel = (event) => {
-      if (!event.ctrlKey) return;
-      event.preventDefault();
-      const factor = Math.exp(-event.deltaY / 300);
-      const nextScale = clamp(scaleRef.current * factor, 0.6, 2.8);
-      setPreviewScale(nextScale);
-      scheduleCommit(nextScale);
-    };
-
-    container.addEventListener("touchstart", onTouchStart, { passive: false });
-    container.addEventListener("touchmove", onTouchMove, { passive: false });
-    container.addEventListener("touchend", onTouchEnd, { passive: true });
-    container.addEventListener("touchcancel", onTouchEnd, { passive: true });
-    container.addEventListener("wheel", onWheel, { passive: false });
-
-    return () => {
-      container.removeEventListener("touchstart", onTouchStart);
-      container.removeEventListener("touchmove", onTouchMove);
-      container.removeEventListener("touchend", onTouchEnd);
-      container.removeEventListener("touchcancel", onTouchEnd);
-      container.removeEventListener("wheel", onWheel);
-    };
+    updateWidth();
+    window.addEventListener("resize", updateWidth);
+    return () => window.removeEventListener("resize", updateWidth);
   }, []);
 
-  const onPageInputChange = (event) => {
-    setPageInput(event.target.value);
-  };
-
-  const onPageInputCommit = () => {
-    if (!pdfDoc) return;
-    const value = parseInt(pageInput, 10);
-    if (Number.isNaN(value)) {
-      setPageInput(String(currentPage));
-      return;
-    }
-    const safeValue = clamp(value, 1, pdfDoc.numPages);
-    setPageInput(String(safeValue));
-    setCurrentPage(safeValue);
-    currentPageRef.current = safeValue;
-    scrollToPage(safeValue, "smooth");
-  };
-
-  const getFitScale = (page) => {
-    if (!containerRef.current) return 1;
-    const viewport = page.getViewport({ scale: 1 });
-    const padding = 60;
-    const maxWidth = containerRef.current.clientWidth - padding;
-    if (maxWidth <= 0) return 1;
-    return clamp(maxWidth / viewport.width, 0.6, 2.2);
-  };
-
-  const clearPages = () => {
-    if (!pagesRef.current) return;
-    pagesRef.current.innerHTML = "";
-    pageWrappersRef.current = [];
+  useEffect(() => {
+    if (!numPages || !containerRef.current) return;
     if (observerRef.current) {
       observerRef.current.disconnect();
-      observerRef.current = null;
     }
-  };
-
-  const attachPageObservers = () => {
-    if (!("IntersectionObserver" in window) || !containerRef.current) return;
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            const pageNum = parseInt(entry.target.dataset.pageNum, 10);
+            const pageNum = Number(entry.target.dataset.pageNum);
             if (!Number.isNaN(pageNum)) {
-              currentPageRef.current = pageNum;
               setCurrentPage(pageNum);
             }
           }
@@ -284,130 +75,62 @@ export default function App() {
       { root: containerRef.current, threshold: 0.5 }
     );
 
-    pageWrappersRef.current.forEach((wrapper) => {
-      observerRef.current.observe(wrapper);
-    });
-  };
-
-  const renderPage = async (pageNum) => {
-    const page = await pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: renderScale });
-
-    const wrapper = document.createElement("div");
-    wrapper.className = "page-shell";
-    wrapper.dataset.pageNum = String(pageNum);
-    wrapper.style.setProperty("--scale-factor", viewport.scale);
-
-    const canvas = document.createElement("canvas");
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
-    wrapper.appendChild(canvas);
-
-    const textLayerDiv = document.createElement("div");
-    textLayerDiv.className = "textLayer";
-    textLayerDiv.style.setProperty("--scale-factor", viewport.scale);
-    wrapper.appendChild(textLayerDiv);
-
-    const annotationLayerDiv = document.createElement("div");
-    annotationLayerDiv.className = "annotationLayer";
-    annotationLayerDiv.style.setProperty("--scale-factor", viewport.scale);
-    wrapper.appendChild(annotationLayerDiv);
-
-    pagesRef.current.appendChild(wrapper);
-    pageWrappersRef.current.push(wrapper);
-
-    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-
-    const textContent = await page.getTextContent();
-    const textLayerTask = pdfjs.renderTextLayer({
-      textContentSource: textContent,
-      container: textLayerDiv,
-      viewport,
-      textDivs: [],
-      enhanceTextSelection: false
+    pageRefs.current.forEach((node) => {
+      if (node) observerRef.current.observe(node);
     });
 
-    if (textLayerTask && textLayerTask.promise) {
-      await textLayerTask.promise;
-    }
-
-    const annotations = await page.getAnnotations({ intent: "display" });
-    await renderLinkAnnotations(annotations, viewport, annotationLayerDiv);
-  };
-
-  const renderLinkAnnotations = async (annotations, viewport, layer) => {
-    layer.innerHTML = "";
-    if (!annotations || !annotations.length) return;
-
-    for (const annotation of annotations) {
-      if (annotation.subtype !== "Link") continue;
-
-      const [x1, y1, x2, y2] = viewport.convertToViewportRectangle(
-        annotation.rect
-      );
-      const left = Math.min(x1, x2);
-      const top = Math.min(y1, y2);
-      const width = Math.abs(x1 - x2);
-      const height = Math.abs(y1 - y2);
-
-      const link = document.createElement("a");
-      link.className = "link-annotation";
-      link.style.left = `${left}px`;
-      link.style.top = `${top}px`;
-      link.style.width = `${width}px`;
-      link.style.height = `${height}px`;
-
-      if (annotation.url) {
-        link.href = annotation.url;
-        link.target = "_blank";
-        link.rel = "noopener";
-      } else if (annotation.dest) {
-        link.href = "#";
-        link.addEventListener("click", async (event) => {
-          event.preventDefault();
-          const targetPage = await resolveDestination(annotation.dest);
-          if (targetPage) {
-            setCurrentPage(targetPage);
-            currentPageRef.current = targetPage;
-            scrollToPage(targetPage, "smooth");
-          }
-        });
-      } else {
-        continue;
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
       }
+    };
+  }, [numPages]);
 
-      layer.appendChild(link);
+  useEffect(() => {
+    if (!isEditing) {
+      setPageInput(String(currentPage));
     }
-  };
+  }, [currentPage, isEditing]);
 
-  const resolveDestination = async (dest) => {
-    if (!pdfDoc) return null;
-    let destArray = dest;
-    if (!Array.isArray(destArray)) {
-      destArray = await pdfDoc.getDestination(dest);
-    }
-    if (!destArray || !destArray.length) return null;
-    const pageRef = destArray[0];
-    try {
-      if (typeof pageRef === "object") {
-        const pageIndex = await pdfDoc.getPageIndex(pageRef);
-        return pageIndex + 1;
-      }
-      if (typeof pageRef === "number") {
-        return pageRef + 1;
-      }
-    } catch (_) {
-      return null;
-    }
-    return null;
-  };
-
-  const scrollToPage = (pageNum, behavior) => {
-    const target = pageWrappersRef.current[pageNum - 1];
+  const scrollToPage = (pageNum) => {
+    const target = pageRefs.current[pageNum - 1];
     if (target) {
-      target.scrollIntoView({ behavior, block: "start" });
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
+
+  const onPageInputCommit = () => {
+    if (!numPages) return;
+    const value = parseInt(pageInput, 10);
+    if (Number.isNaN(value)) {
+      setPageInput(String(currentPage));
+      return;
+    }
+    const safeValue = clamp(value, 1, numPages);
+    setPageInput(String(safeValue));
+    scrollToPage(safeValue);
+  };
+
+  const pages = Array.from({ length: numPages }, (_, index) => {
+    const pageNum = index + 1;
+    return (
+      <div
+        key={`page_${pageNum}`}
+        className="page-shell"
+        data-page-num={pageNum}
+        ref={(node) => {
+          pageRefs.current[index] = node;
+        }}
+      >
+        <Page
+          pageNumber={pageNum}
+          width={pageWidth}
+          renderTextLayer
+          renderAnnotationLayer
+        />
+      </div>
+    );
+  });
 
   return (
     <div className="app">
@@ -427,7 +150,7 @@ export default function App() {
                 type="number"
                 min="1"
                 value={pageInput}
-                onChange={onPageInputChange}
+                onChange={(event) => setPageInput(event.target.value)}
                 onFocus={() => setIsEditing(true)}
                 onBlur={() => {
                   setIsEditing(false);
@@ -440,7 +163,7 @@ export default function App() {
                 }}
                 disabled={status !== "ready"}
               />
-              <div className="page-total">/ {pageCount}</div>
+              <div className="page-total">/ {numPages || 1}</div>
             </div>
           </div>
         </div>
@@ -449,14 +172,36 @@ export default function App() {
       <main className="viewer">
         <section className="viewer-shell">
           <div className="pdf-container" ref={containerRef}>
-            <div
-              className="pdf-pages"
-              ref={pagesRef}
-              style={{
-                transform: `scale(${previewScale / renderScale})`,
-                transformOrigin: "top center"
-              }}
-            />
+            <TransformWrapper
+              minScale={0.8}
+              maxScale={3}
+              centerOnInit
+              doubleClick={{ disabled: true }}
+              wheel={{ disabled: true }}
+              pinch={{ step: 5 }}
+              panning={{ disabled: true }}
+            >
+              <TransformComponent wrapperClass="pdf-transform" contentClass="pdf-pages">
+                <Document
+                  file={{ url: pdfUrl }}
+                  options={{
+                    disableWorker: isIOS,
+                    disableRange: true,
+                    disableStream: true
+                  }}
+                  loading={<div className="loading">Завантажуємо PDF…</div>}
+                  error={<div className="loading">Не вдалося завантажити PDF.</div>}
+                  onLoadSuccess={(pdf) => {
+                    setNumPages(pdf.numPages);
+                    setStatus("ready");
+                  }}
+                  onLoadError={() => setStatus("error")}
+                >
+                  {pages}
+                </Document>
+              </TransformComponent>
+            </TransformWrapper>
+
             {status === "loading" && <div className="loading">Завантажуємо PDF…</div>}
             {status === "error" && (
               <div className="loading">

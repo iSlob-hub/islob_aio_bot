@@ -18,6 +18,7 @@ html, body {
   margin: 0;
   padding: 0;
   min-height: 100%;
+  overflow-x: hidden;
   background:
     radial-gradient(900px 520px at 5% 0%, rgba(255, 215, 0, 0.18) 0%, transparent 60%),
     radial-gradient(700px 420px at 95% 5%, rgba(147, 112, 219, 0.2) 0%, transparent 55%),
@@ -26,14 +27,21 @@ html, body {
   font-family: "Manrope", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
+body {
+  width: 100%;
+}
+
 #root {
   min-height: 100vh;
+  width: 100%;
 }
 
 .app {
   min-height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 .topbar {
@@ -43,12 +51,14 @@ html, body {
   background: rgba(255, 250, 243, 0.9);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(10px);
+  width: 100%;
 }
 
 .topbar-inner {
   max-width: 1200px;
+  width: 100%;
   margin: 0 auto;
-  padding: 18px 24px;
+  padding: 18px 16px;
   display: flex;
   align-items: center;
   gap: 18px;
@@ -132,13 +142,16 @@ html, body {
 }
 
 .viewer {
-  padding: 20px 24px 28px;
+  padding: 16px;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 .viewer-shell {
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  height: calc(100vh - 96px);
+  height: calc(100vh - 92px);
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 22px;
@@ -151,12 +164,40 @@ html, body {
 .pdf-container {
   flex: 1;
   overflow: auto;
-  padding: 20px 18px 30px;
+  overflow-x: hidden;
+  padding: 16px 12px 24px;
+  width: 100%;
+}
+
+.pdf-transform {
+  width: 100%;
+  height: 100%;
+  touch-action: pan-y pinch-zoom;
+  overflow: hidden;
+}
+
+.react-transform-wrapper {
+  width: 100% !important;
+  height: auto !important;
+  overflow: visible !important;
+  max-width: 100% !important;
+}
+
+.react-transform-component {
+  width: 100% !important;
+  height: auto !important;
+  overflow: visible !important;
+  max-width: 100% !important;
 }
 
 .pdf-pages {
   position: relative;
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 22px;
+  padding-bottom: 20px;
 }
 
 .loading {
@@ -168,11 +209,28 @@ html, body {
 
 .page-shell {
   position: relative;
-  margin: 0 auto 22px;
   background: #fff;
   border-radius: 16px;
   box-shadow: 0 12px 30px rgba(25, 18, 50, 0.12);
   overflow: hidden;
+  width: 100%;
+  max-width: 100%;
+}
+
+.react-pdf__Page {
+  width: 100% !important;
+  max-width: 100%;
+}
+
+.react-pdf__Page__canvas {
+  display: block;
+  width: 100% !important;
+  height: auto !important;
+  max-width: 100%;
+}
+
+.react-pdf__Page__annotations {
+  pointer-events: auto;
 }
 
 .page-shell canvas {
@@ -221,6 +279,7 @@ html, body {
   .topbar-inner {
     flex-direction: column;
     align-items: flex-start;
+    max-width: 100%;
   }
 
   .controls {
@@ -229,14 +288,33 @@ html, body {
   }
 
   .viewer {
-    padding: 14px;
+    padding: 10px;
   }
 
   .viewer-shell {
-    height: calc(100vh - 140px);
+    height: calc(100vh - 150px);
+    max-width: 100%;
   }
 
   .title-text span {
     max-width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  .topbar-inner {
+    padding: 14px 12px;
+  }
+
+  .viewer {
+    padding: 6px;
+  }
+
+  .viewer-shell {
+    border-radius: 18px;
+  }
+
+  .pdf-container {
+    padding: 10px 6px 16px;
   }
 }

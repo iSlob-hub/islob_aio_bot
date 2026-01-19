@@ -102,6 +102,8 @@ async def debug_static_check():
         "pdf_worker_min_js": static_dir / "pdfjs" / "build" / "pdf.worker.min.js",
         "legacy_pdf_min_js": static_dir / "pdfjs" / "legacy" / "build" / "pdf.min.js",
         "legacy_pdf_worker_min_js": static_dir / "pdfjs" / "legacy" / "build" / "pdf.worker.min.js",
+        "training_viewer_js": static_dir / "training_viewer" / "training_viewer.js",
+        "training_viewer_css": static_dir / "training_viewer" / "training_viewer.css",
     }
     return {
         "cwd": str(Path.cwd().resolve()),
@@ -248,8 +250,7 @@ async def training_file_raw(token: str):
 
     response_headers = _training_file_cors_headers()
     response_headers["Content-Disposition"] = _build_content_disposition(filename)
-    response_headers["Cache-Control"] = "private, max-age=0, must-revalidate"
-    response_headers["Pragma"] = "no-cache"
+    response_headers["Cache-Control"] = "private, max-age=600"
     return FileResponse(
         file_path,
         media_type="application/pdf",
