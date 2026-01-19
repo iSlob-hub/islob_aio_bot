@@ -101,7 +101,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 22px;
+  gap: 28px;
   padding-bottom: 20px;
 }
 
@@ -202,5 +202,9 @@ body {
 
   .pdf-container {
     padding: 10px 6px 16px;
+  }
+
+  .pdf-pages {
+    gap: 18px;
   }
 }
