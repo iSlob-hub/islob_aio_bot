@@ -24,7 +24,7 @@ export default function App() {
   const pageRefs = useRef([]);
   const observerRef = useRef(null);
 
-  const [{ pdfUrl, filename }] = useState(getViewerConfig);
+  const [{ pdfUrl }] = useState(getViewerConfig);
   const [numPages, setNumPages] = useState(0);
   const [pageWidth, setPageWidth] = useState(760);
   const [status, setStatus] = useState("loading");
@@ -134,42 +134,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="topbar-inner">
-          <div className="title-block">
-            <div className="badge">PDF</div>
-            <div className="title-text">
-              <h1>Тренування</h1>
-              <span>{filename}</span>
-            </div>
-          </div>
-          <div className="controls">
-            <div className="control-group">
-              <input
-                className="page-input"
-                type="number"
-                min="1"
-                value={pageInput}
-                onChange={(event) => setPageInput(event.target.value)}
-                onFocus={() => setIsEditing(true)}
-                onBlur={() => {
-                  setIsEditing(false);
-                  onPageInputCommit();
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.target.blur();
-                  }
-                }}
-                disabled={status !== "ready"}
-              />
-              <div className="page-total">/ {numPages || 1}</div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="viewer">
+      <main className="viewer viewer-full">
         <section className="viewer-shell">
           <div className="pdf-container" ref={containerRef}>
             <TransformWrapper
