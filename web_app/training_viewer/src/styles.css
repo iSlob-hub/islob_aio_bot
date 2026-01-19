@@ -120,6 +120,16 @@ body {
   overflow: hidden;
   width: 100%;
   max-width: 100%;
+  margin-bottom: 44px;
+}
+
+.page-shell:last-child {
+  margin-bottom: 0;
+}
+
+.react-pdf__Document {
+  width: 100%;
+  max-width: 100%;
 }
 
 .react-pdf__Page {
@@ -193,18 +203,30 @@ body {
 
 @media (max-width: 600px) {
   .viewer {
-    padding: 6px;
+    padding: 0;
   }
 
   .viewer-shell {
-    border-radius: 16px;
+    width: 100vw;
+    max-width: 100vw;
+    border-radius: 0;
   }
 
   .pdf-container {
-    padding: 10px 6px 16px;
+    padding: 8px 0 12px;
   }
 
   .pdf-pages {
     gap: 28px;
+  }
+
+  .page-shell {
+    border-radius: 0;
+    box-shadow: none;
+    margin-bottom: 28px;
+  }
+
+  .page-shell:last-child {
+    margin-bottom: 0;
   }
 }
