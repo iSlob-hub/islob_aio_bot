@@ -736,7 +736,7 @@ async def notify_training_assigned(
     try:
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="Підглянути, що там", callback_data="preview_training")]
+                [InlineKeyboardButton(text="Підглянути, що там 🫣", callback_data="preview_training")]
             ]
         )
         

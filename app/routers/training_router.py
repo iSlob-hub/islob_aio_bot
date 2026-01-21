@@ -703,20 +703,46 @@ async def handle_stress_level(callback_query: CallbackQuery, state: FSMContext) 
 
 @training_router.callback_query(F.data == "preview_training")
 async def preview_training(callback_query: CallbackQuery) -> None:
-    user = await User.find_one(User.telegram_id == str(callback_query.from_user.id))
-    
-    if not user:
-        await callback_query.message.answer(
-            text="❌ Тренування не знайдено. Зверніться до адміністратора."
+    if callback_query.message:
+        try:
+            await callback_query.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+    await callback_query.answer()
+
+    async def send_with_menu(text: str, *, parse_mode: str | None = None) -> None:
+        active_quiz = await get_active_morning_quiz_for_today(
+            callback_query.from_user.id,
+            is_test=None,
         )
-        await callback_query.answer()
+        reply_markup = await get_main_menu_keyboard(
+            include_morning_quiz_resume=bool(active_quiz),
+        )
+        if callback_query.message:
+            await callback_query.message.answer(
+                text=text,
+                parse_mode=parse_mode,
+                disable_web_page_preview=True,
+                reply_markup=reply_markup,
+            )
+            return
+        await callback_query.bot.send_message(
+            chat_id=callback_query.from_user.id,
+            text=text,
+            parse_mode=parse_mode,
+            disable_web_page_preview=True,
+            reply_markup=reply_markup,
+        )
+
+    user = await User.find_one(User.telegram_id == str(callback_query.from_user.id))
+
+    if not user:
+        await send_with_menu("❌ Тренування не знайдено. Зверніться до адміністратора.")
         return
 
     if not user.training_file_url:
-        await callback_query.message.answer(
-            text="❌ Тренування не знайдено. Зверніться до тренера."
-        )
-        await callback_query.answer()
+        await send_with_menu("❌ Тренування не знайдено. Зверніться до тренера.")
         return
 
     if not user.training_preview:
@@ -727,15 +753,11 @@ async def preview_training(callback_query: CallbackQuery) -> None:
                 "Зверніться до тренера, щоб оновити файл."
             )
 
-        await callback_query.message.answer(text=message)
-        await callback_query.answer()
+        await send_with_menu(message)
         return
 
     preview_text = _prepare_preview_for_telegram(user.training_preview)
-    await callback_query.answer()
-
-    await callback_query.message.answer(
-        text=f"🏋️ Превʼю твого тренування:\n\n{preview_text}",
+    await send_with_menu(
+        f"🏋️ Превʼю твого тренування:\n\n{preview_text}",
         parse_mode="HTML",
-        disable_web_page_preview=True,
     )

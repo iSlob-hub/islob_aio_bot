@@ -154,8 +154,8 @@ export default function App() {
                     disableRange: true,
                     disableStream: true
                   }}
-                  loading={<div className="loading">Ще трошечки почекай і все буде 🙏</div>}
-                  error={<div className="loading">Не вдалося завантажити PDF.</div>}
+                  loading={null}
+                  error={null}
                   onLoadSuccess={(pdf) => {
                     setNumPages(pdf.numPages);
                     setStatus("ready");
