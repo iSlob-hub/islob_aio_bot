@@ -8,12 +8,20 @@ import app.text_constants as tc
 from app.utils.text_templates import get_template, sync_get_template
 
 
-async def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
+async def get_main_menu_keyboard(
+    include_morning_quiz_resume: bool = False,
+) -> ReplyKeyboardMarkup:
     """
     Create the main menu keyboard.
     """
+    resume_row = (
+        [KeyboardButton(text=tc.CONTINUE_MORNING_QUIZ_BUTTON)]
+        if include_morning_quiz_resume
+        else []
+    )
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
+            *([resume_row] if resume_row else []),
             [
                 KeyboardButton(text=tc.TRAINING_MENU_BUTTON),
                 KeyboardButton(text=tc.NOTIFICATIONS_MENU_BUTTON),

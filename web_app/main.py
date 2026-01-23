@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Request, Query, Depends, UploadFile, File, HTTPException, Form
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Response
 import os
 from datetime import datetime, timedelta
 from functools import wraps
 import logging
+import mimetypes
 
 logger = logging.getLogger(__name__)
 from app.db.database import init_db
@@ -27,16 +28,26 @@ from web_app.notifications_router import router as notifications_router
 from web_app.bot_settings_router import router as bot_settings_router
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pathlib import Path
-from urllib.parse import quote_plus, urlparse
-from fastapi.staticfiles import StaticFiles
+from urllib.parse import quote, quote_plus, urlparse
 from app.utils.training_preview import generate_training_preview_from_pdf
 from zoneinfo import ZoneInfo
+from fastapi.staticfiles import StaticFiles
+from app.utils.training_links import (
+    BadSignature,
+    SignatureExpired,
+    build_training_file_token,
+    build_training_view_path,
+    build_training_view_url,
+    extract_training_filename,
+    parse_training_file_token,
+)
 
 load_dotenv()
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 TG_BOT_USERNAME = os.environ.get("TG_BOT_USERNAME")
+BASE_HOST = os.environ.get("BASE_HOST")
 
 ADMIN_IDS = [
     "591812219",
@@ -51,17 +62,94 @@ app.include_router(statistics_router)
 app.include_router(notifications_router)
 app.include_router(bot_settings_router)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+BASE_DIR = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # Ensure the uploads directory exists and mount it using an absolute path
-FILES_DIR = Path(BASE_DIR).parent / "internal_files"
+FILES_DIR = BASE_DIR.parent / "internal_files"
 FILES_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/files", StaticFiles(directory=str(FILES_DIR)), name="files")
+STATIC_DIR = BASE_DIR / "static"
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+@app.middleware("http")
+async def log_static_requests(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        headers = response.headers
+        logger.info(
+            "static_request path=%s status=%s content_type=%s content_length=%s cache_control=%s",
+            request.url.path,
+            response.status_code,
+            headers.get("content-type"),
+            headers.get("content-length"),
+            headers.get("cache-control"),
+        )
+    return response
 
 @app.on_event("startup")
 async def startup_event():
     await init_db()
+
+@app.get("/debug/static-check")
+async def debug_static_check():
+    base_dir = Path(__file__).resolve().parent
+    static_dir = (base_dir / "static").resolve()
+    targets = {
+        "pdf_min_js": static_dir / "pdfjs" / "build" / "pdf.min.js",
+        "pdf_worker_min_js": static_dir / "pdfjs" / "build" / "pdf.worker.min.js",
+        "legacy_pdf_min_js": static_dir / "pdfjs" / "legacy" / "build" / "pdf.min.js",
+        "legacy_pdf_worker_min_js": static_dir / "pdfjs" / "legacy" / "build" / "pdf.worker.min.js",
+        "training_viewer_js": static_dir / "training_viewer" / "training_viewer.js",
+        "training_viewer_css": static_dir / "training_viewer" / "training_viewer.css",
+    }
+    return {
+        "cwd": str(Path.cwd().resolve()),
+        "static_dir_configured": str(STATIC_DIR),
+        "static_dir_resolved": str(STATIC_DIR.resolve()),
+        "files": {
+            key: {"path": str(path.resolve()), "exists": path.exists()}
+            for key, path in targets.items()
+        },
+    }
+
+@app.get("/debug/pdfjs-smoke", response_class=HTMLResponse)
+async def debug_pdfjs_smoke():
+    html = """<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PDF.js Smoke</title>
+  </head>
+  <body>
+    <script src="/static/pdfjs/legacy/build/pdf.min.js"></script>
+    <script>
+      (async () => {
+        const pdfjsOk = !!window.pdfjsLib;
+        document.body.innerText = pdfjsOk ? "OK" : "FAIL";
+        async function headStatus(url) {
+          try {
+            const res = await fetch(url, { method: "HEAD" });
+            return `${res.status}${res.redirected ? ` (redirected to ${res.url})` : ""}`;
+          } catch (err) {
+            return `error: ${err && err.message ? err.message : String(err)}`;
+          }
+        }
+        const pdfHead = await headStatus("/static/pdfjs/legacy/build/pdf.min.js");
+        const workerHead = await headStatus("/static/pdfjs/legacy/build/pdf.worker.min.js");
+        document.body.innerText = [
+          `pdf.min.js HEAD: ${pdfHead}`,
+          `pdf.worker.min.js HEAD: ${workerHead}`,
+          `window.pdfjsLib: ${pdfjsOk ? "OK" : "FAIL"}`
+        ].join("\\n");
+      })();
+    </script>
+  </body>
+</html>"""
+    return HTMLResponse(content=html)
 
 
 def get_admin_user(user: User = Depends(get_current_user)) -> User:
@@ -72,6 +160,102 @@ def get_admin_user(user: User = Depends(get_current_user)) -> User:
             detail="Доступ заборонено! Ви маєте бути адміністратором."
         )
     return user
+
+
+def _build_training_view_path(telegram_id: str, file_url: Optional[str]) -> Optional[str]:
+    filename = extract_training_filename(file_url)
+    if not filename:
+        return None
+    token = build_training_file_token(telegram_id, filename)
+    return build_training_view_path(token)
+
+
+def _build_training_view_url(telegram_id: str, file_url: Optional[str]) -> Optional[str]:
+    filename = extract_training_filename(file_url)
+    if not filename:
+        return None
+    token = build_training_file_token(telegram_id, filename)
+    return build_training_view_url(BASE_HOST, token)
+
+
+def _resolve_training_file_path(telegram_id: str, filename: str) -> Path:
+    safe_filename = Path(filename).name
+    return FILES_DIR / str(telegram_id) / safe_filename
+
+
+def _training_file_cors_headers() -> dict:
+    return {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET,HEAD,OPTIONS",
+        "Access-Control-Allow-Headers": "Range",
+        "Access-Control-Expose-Headers": "Accept-Ranges, Content-Range, Content-Length, Content-Disposition",
+    }
+
+
+def _build_content_disposition(filename: str) -> str:
+    safe_name = Path(filename).name
+    ascii_name = safe_name.encode("ascii", "ignore").decode("ascii").strip()
+    if not ascii_name:
+        suffix = Path(safe_name).suffix
+        ascii_name = f"file{suffix or ''}"
+    quoted_utf8 = quote(safe_name, safe="")
+    return f'inline; filename="{ascii_name}"; filename*=UTF-8\'\'{quoted_utf8}'
+
+
+@app.get("/training-file/{token}", response_class=HTMLResponse)
+async def training_file_viewer(request: Request, token: str):
+    try:
+        data = parse_training_file_token(token)
+    except (BadSignature, SignatureExpired):
+        raise HTTPException(status_code=404, detail="Invalid link")
+
+    telegram_id = data.get("telegram_id")
+    filename = data.get("filename")
+    if not telegram_id or not filename:
+        raise HTTPException(status_code=404, detail="Invalid link")
+
+    file_path = _resolve_training_file_path(telegram_id, filename)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Файл не знайдено")
+
+    return templates.TemplateResponse(
+        "training_public_viewer.html",
+        {
+            "request": request,
+            "filename": Path(filename).name,
+        },
+    )
+
+
+@app.options("/training-file/{token}/raw")
+async def training_file_raw_options(token: str):
+    return Response(status_code=204, headers=_training_file_cors_headers())
+
+
+@app.get("/training-file/{token}/raw")
+async def training_file_raw(token: str):
+    try:
+        data = parse_training_file_token(token)
+    except (BadSignature, SignatureExpired):
+        raise HTTPException(status_code=404, detail="Invalid link")
+
+    telegram_id = data.get("telegram_id")
+    filename = data.get("filename")
+    if not telegram_id or not filename:
+        raise HTTPException(status_code=404, detail="Invalid link")
+
+    file_path = _resolve_training_file_path(telegram_id, filename)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Файл не знайдено")
+
+    response_headers = _training_file_cors_headers()
+    response_headers["Content-Disposition"] = _build_content_disposition(filename)
+    response_headers["Cache-Control"] = "private, max-age=600"
+    return FileResponse(
+        file_path,
+        media_type="application/pdf",
+        headers=response_headers,
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -216,6 +400,30 @@ async def user_profile(request: Request, telegram_id: str = Query(...), user: Us
         ScheduledTrainingDelivery.user_id == telegram_id
     ).sort("send_at").to_list()
 
+    training_file_view_path = _build_training_view_path(
+        user_profile.telegram_id,
+        user_profile.training_file_url,
+    )
+    scheduled_view_paths = {
+        item.id: _build_training_view_path(item.user_id, item.training_file_url)
+        for item in scheduled_deliveries
+    }
+    history_items = sorted(
+        user_profile.training_file_history or [],
+        key=lambda item: item.sent_at,
+        reverse=True,
+    )
+    history_view = [
+        {
+            "filename": item.filename,
+            "sent_at": item.sent_at,
+            "view_path": _build_training_view_path(
+                user_profile.telegram_id, item.file_url
+            ),
+        }
+        for item in history_items
+    ]
+
     return templates.TemplateResponse(
         "profile.html",
         {
@@ -230,6 +438,9 @@ async def user_profile(request: Request, telegram_id: str = Query(...), user: Us
             "training_status": request.query_params.get("training_status"),
             "training_message": request.query_params.get("training_message"),
             "scheduled_deliveries": scheduled_deliveries,
+            "training_file_view_path": training_file_view_path,
+            "scheduled_view_paths": scheduled_view_paths,
+            "history_view": history_view,
         }
     )
 
@@ -523,16 +734,18 @@ async def notify_training_assigned(
     bot = Bot(token=BOT_TOKEN)
     
     try:
-        # Створюємо клавіатуру з кнопкою
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Підглянути що там 🫣", callback_data="preview_training")]
-        ])
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Підглянути, що там 🫣", callback_data="preview_training")]
+            ]
+        )
         
         # Відправляємо повідомлення
         await bot.send_message(
             chat_id=int(telegram_id),
             text="🎉 Ура! Тренер оновив тобі програму. Погнали її затестимо!",
-            reply_markup=keyboard
+            reply_markup=keyboard,
+            disable_web_page_preview=True,
         )
 
         filename = recipient.training_file_url.split("/")[-1] if recipient.training_file_url else "training.pdf"

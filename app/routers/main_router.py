@@ -1,4 +1,6 @@
 import re
+from datetime import datetime, date
+from zoneinfo import ZoneInfo
 from aiogram import F
 from aiogram.filters import Command, StateFilter
 from aiogram.types import Message
@@ -15,8 +17,18 @@ from aiogram.types import (
 from typing import Optional
 from app.db.models import User, Notification, NotificationType, MorningQuiz, TrainingGoal
 from app.keyboards import get_main_menu_keyboard, get_notifications_menu_keyboard, get_report_problem_keyboard
+import app.text_constants as tc
+from app.states import MorningQuizStates
 from app.utils.bot_utils import is_valid_morning_time
 from app.utils.text_templates import get_template, format_template, sync_get_template
+from app.utils.morning_quiz_utils import (
+    validate_transform_time,
+    convert_time_to_datetime,
+    create_gym_reminder_notification,
+    get_active_morning_quiz_for_today,
+)
+
+KYIV_TIMEZONE = ZoneInfo("Europe/Kyiv")
 
 def generate_username_from_name(full_name: str) -> str:
     if not full_name:
@@ -32,6 +44,157 @@ def generate_username_from_name(full_name: str) -> str:
         return "user"
         
     return username
+
+
+def _normalize_sent_date(value: object) -> Optional[date]:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return None
+
+
+async def _daily_morning_quiz_already_sent(user_id: str) -> bool:
+    notification = await Notification.find_one(
+        Notification.user_id == str(user_id),
+        Notification.notification_type == NotificationType.DAILY_MORNING_NOTIFICATION,
+    )
+    if not notification or not notification.system_data:
+        return False
+    last_sent_date = _normalize_sent_date(notification.system_data.get("last_sent_date"))
+    if not last_sent_date:
+        return False
+    return last_sent_date == datetime.now(tz=KYIV_TIMEZONE).date()
+
+
+async def _mark_daily_morning_quiz_sent(user_id: str) -> None:
+    notification = await Notification.find_one(
+        Notification.user_id == str(user_id),
+        Notification.notification_type == NotificationType.DAILY_MORNING_NOTIFICATION,
+    )
+    if not notification:
+        return
+    if not notification.system_data:
+        notification.system_data = {}
+    notification.system_data["last_sent_date"] = datetime.now(tz=KYIV_TIMEZONE)
+    await notification.save()
+
+
+async def _send_morning_quiz_intro(message: Message, morning_quiz_id: str) -> None:
+    await message.answer(
+        text=await get_template("morning_quiz_intro"),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=await get_template("start_quiz_button"),
+                        callback_data=f"start_morning_quiz_{morning_quiz_id}",
+                    )
+                ]
+            ]
+        ),
+    )
+
+
+async def _start_morning_quiz_for_user(
+    message: Message,
+    *,
+    is_test: bool,
+    enforce_daily_limit: bool,
+) -> None:
+    user_telegram_id = message.from_user.id
+    active_quiz = await get_active_morning_quiz_for_today(
+        user_telegram_id,
+        is_test=is_test,
+    )
+    if active_quiz:
+        await _send_morning_quiz_intro(message, str(active_quiz.id))
+        return
+
+    if enforce_daily_limit and await _daily_morning_quiz_already_sent(user_telegram_id):
+        await message.answer(text=await get_template("morning_quiz_already_completed"))
+        return
+
+    morning_quiz = MorningQuiz(
+        user_id=str(user_telegram_id),
+        is_test=is_test,
+    )
+    await morning_quiz.save()
+    await _send_morning_quiz_intro(message, morning_quiz.id)
+    if enforce_daily_limit:
+        await _mark_daily_morning_quiz_sent(user_telegram_id)
+
+
+async def _finalize_morning_quiz(
+    message: Message,
+    state: FSMContext,
+    morning_quiz: MorningQuiz,
+    weight_value: Optional[float],
+    weight_display: str,
+) -> None:
+    gym_time_str = (
+        morning_quiz.gym_attendance_time.strftime("%H:%M")
+        if morning_quiz.gym_attendance_time
+        else ""
+    )
+    gym_time_text = (
+        f"Час відвідування спортзалу: <b>{gym_time_str}</b>.\n"
+        if morning_quiz.is_going_to_gym and gym_time_str
+        else ""
+    )
+
+    if morning_quiz.is_going_to_gym and morning_quiz.gym_attendance_time:
+        await message.answer(
+            text=await format_template(
+                "morning_quiz_step5",
+                how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
+                sleep_time=morning_quiz.how_many_hours_of_sleep,
+                is_going_to_gym="Так",
+                gym_attendance_time=gym_time_str,
+                gym_attendance_time_text=gym_time_text,
+                weight=weight_display,
+            ),
+            parse_mode="HTML",
+            reply_markup=await _get_main_menu_keyboard_for_user(message.from_user.id),
+        )
+    else:
+        await message.answer(
+            text=await format_template(
+                "morning_quiz_step51",
+                how_do_you_feel_today=morning_quiz.how_do_you_feel_today,
+                sleep_time=morning_quiz.how_many_hours_of_sleep,
+                is_going_to_gym="Ні",
+                gym_attendance_time_text=gym_time_text,
+                weight=weight_display,
+            ),
+            parse_mode="HTML",
+            reply_markup=await _get_main_menu_keyboard_for_user(message.from_user.id),
+        )
+
+    morning_quiz.weight = weight_value
+    morning_quiz.completed = True
+    await morning_quiz.save()
+
+    if morning_quiz.is_going_to_gym and morning_quiz.gym_attendance_time:
+        await create_gym_reminder_notification(
+            user_id=str(message.from_user.id),
+            gym_time=morning_quiz.gym_attendance_time,
+        )
+
+    await state.clear()
+    await state.set_state(MainMenuState.main_menu)
+
+
+async def _get_main_menu_keyboard_for_user(
+    user_id: str,
+) -> ReplyKeyboardMarkup:
+    active_quiz = await get_active_morning_quiz_for_today(
+        user_id,
+        is_test=None,
+    )
+    return await get_main_menu_keyboard(
+        include_morning_quiz_resume=bool(active_quiz),
+    )
 
 
 class InitialConversationState(StatesGroup):
@@ -147,7 +310,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
                 "start_command",
                 full_name=user.full_name
             ),
-            reply_markup=await get_main_menu_keyboard(),
+            reply_markup=await _get_main_menu_keyboard_for_user(message.from_user.id),
         )
         await state.set_state(MainMenuState.main_menu)
         return
@@ -174,7 +337,7 @@ async def cmd_menu(message: Message, state: FSMContext) -> None:
     await state.set_state(MainMenuState.main_menu)
     await message.answer(
         text=await get_template("menu_command"),
-        reply_markup=await get_main_menu_keyboard(),
+        reply_markup=await _get_main_menu_keyboard_for_user(message.from_user.id),
     )
 
 
@@ -312,7 +475,7 @@ async def process_training_goal(
                 "training_goal_setup_finished", 
                 goal=user.training_goal.value
             ),
-            reply_markup=await get_main_menu_keyboard(),
+            reply_markup=await _get_main_menu_keyboard_for_user(message.from_user.id),
         )
 
 
@@ -365,29 +528,50 @@ async def process_report_problem(message: Message, state: FSMContext) -> None:
     await state.set_state(MainMenuState.report_problem)
 
 
+@main_router.message(
+    StateFilter(MainMenuState.main_menu),
+    F.text == sync_get_template(
+        "continue_morning_quiz_button",
+        tc.CONTINUE_MORNING_QUIZ_BUTTON,
+    ),
+)
+async def process_continue_morning_quiz(message: Message, state: FSMContext) -> None:
+    if await ensure_onboarding_not_finished(message, state):
+        return
+    active_quiz = await get_active_morning_quiz_for_today(
+        message.from_user.id,
+        is_test=None,
+    )
+    if active_quiz:
+        await _send_morning_quiz_intro(message, str(active_quiz.id))
+        return
+
+    await _start_morning_quiz_for_user(
+        message,
+        is_test=False,
+        enforce_daily_limit=True,
+    )
+
+
 @main_router.message(Command("morning_quiz"), StateFilter(MainMenuState.main_menu))
 async def cmd_morning_quiz(message: Message, state: FSMContext) -> None:
     if await ensure_onboarding_not_finished(message, state):
         return
-    user_telegram_id = message.from_user.id
-    morning_quiz = MorningQuiz(
-        user_id=str(user_telegram_id),
+    await _start_morning_quiz_for_user(
+        message,
+        is_test=False,
+        enforce_daily_limit=True,
     )
-    await morning_quiz.save()
-    morning_quiz_id = morning_quiz.id
 
-    await message.answer(
-        text=await get_template("morning_quiz_intro"),
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=await get_template("start_quiz_button"),
-                        callback_data=f"start_morning_quiz_{morning_quiz_id}",
-                    )
-                ]
-            ]
-        ),
+
+@main_router.message(Command("morning_quiz_test"), StateFilter(MainMenuState.main_menu))
+async def cmd_morning_quiz_test(message: Message, state: FSMContext) -> None:
+    if await ensure_onboarding_not_finished(message, state):
+        return
+    await _start_morning_quiz_for_user(
+        message,
+        is_test=True,
+        enforce_daily_limit=False,
     )
 
 
@@ -397,7 +581,111 @@ async def process_main_menu(message: Message, state: FSMContext) -> None:
     if await ensure_onboarding_not_finished(message, state):
         return
 
+    active_quiz = await get_active_morning_quiz_for_today(
+        message.from_user.id,
+        is_test=None,
+    )
+    if active_quiz:
+        await state.update_data(morning_quiz_id=str(active_quiz.id))
+
+        if (
+            active_quiz.how_do_you_feel_today is not None
+            and active_quiz.how_many_hours_of_sleep is None
+        ):
+            await state.set_state(MorningQuizStates.waiting_for_how_many_hours_of_sleep)
+            sleep_time_str = message.text.strip()
+            sleep_time = validate_transform_time(sleep_time_str)
+            if sleep_time is None:
+                await message.answer(text=await get_template("invalid_time"))
+                return
+            active_quiz.how_many_hours_of_sleep = sleep_time
+            await active_quiz.save()
+            await message.answer(
+                text=await format_template(
+                    "morning_quiz_step2",
+                    how_do_you_feel_today=active_quiz.how_do_you_feel_today,
+                    sleep_time=sleep_time,
+                ),
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="Так",
+                                callback_data="is_going_to_gym_yes",
+                            ),
+                            InlineKeyboardButton(
+                                text="Ні",
+                                callback_data="is_going_to_gym_no",
+                            ),
+                        ]
+                    ]
+                ),
+                parse_mode="HTML",
+            )
+            await state.set_state(MorningQuizStates.waiting_for_is_going_to_gym)
+            return
+
+        if active_quiz.is_going_to_gym and active_quiz.gym_attendance_time is None:
+            await state.set_state(MorningQuizStates.waiting_for_gym_attendance_time)
+            gym_attendance_time = message.text.strip()
+            if not gym_attendance_time:
+                await message.answer(await get_template("enter_gym_attendance_time"))
+                return
+
+            gym_attendance_time_dt = convert_time_to_datetime(gym_attendance_time)
+            if gym_attendance_time_dt is None:
+                await message.answer(await get_template("invalid_time"))
+                return
+
+            active_quiz.gym_attendance_time = gym_attendance_time_dt
+            await active_quiz.save()
+            await create_gym_reminder_notification(
+                user_id=str(message.from_user.id),
+                gym_time=gym_attendance_time_dt,
+            )
+            await message.answer(
+                text=await format_template(
+                    "morning_quiz_step41",
+                    how_do_you_feel_today=active_quiz.how_do_you_feel_today,
+                    sleep_time=active_quiz.how_many_hours_of_sleep,
+                    gym_attendance_time=gym_attendance_time_dt.strftime("%H:%M"),
+                ),
+                reply_markup=None,
+                parse_mode="HTML",
+            )
+            await state.set_state(MorningQuizStates.waiting_for_weight)
+            return
+
+        if (
+            active_quiz.weight is None
+            and active_quiz.is_going_to_gym is not None
+            and (
+                not active_quiz.is_going_to_gym
+                or active_quiz.gym_attendance_time is not None
+            )
+        ):
+            await state.set_state(MorningQuizStates.waiting_for_weight)
+            weight_str = message.text.strip()
+            try:
+                weight = float(weight_str)
+            except ValueError:
+                await message.answer(await get_template("invalid_weight"))
+                return
+
+            if weight > 200 or weight < 40:
+                await message.answer(await get_template("invalid_weight"))
+                return
+
+            await _finalize_morning_quiz(
+                message=message,
+                state=state,
+                morning_quiz=active_quiz,
+                weight_value=weight,
+                weight_display=f"{weight}",
+            )
+            return
+
     await message.answer(
         text=await get_template("select_option"),
-        reply_markup=await get_main_menu_keyboard(),
+        reply_markup=await _get_main_menu_keyboard_for_user(message.from_user.id),
     )

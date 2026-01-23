@@ -446,12 +446,17 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="alert alert-success d-flex justify-content-between align-items-center">
             <div>
                 <strong>✅ Завантажено:</strong>
-                <a href="{{ user.training_file_url }}" target="_blank" class="ms-2">
+                {% if training_file_view_path %}
+                <a href="{{ training_file_view_path }}" target="_blank" class="ms-2">
                 {{ user.training_file_url.split('/')[-1] }}
                 </a>
+                {% else %}
+                <span class="ms-2">{{ user.training_file_url.split('/')[-1] }}</span>
+                {% endif %}
             </div>
             <button class="btn btn-outline-dark btn-sm"
-                    onclick="navigator.clipboard.writeText(window.location.origin + '{{ user.training_file_url }}')">
+                    onclick="navigator.clipboard.writeText(window.location.origin + '{{ training_file_view_path or '' }}')"
+                    {% if not training_file_view_path %}disabled{% endif %}>
             📋 Скопіювати посилання
             </button>
             </div>
@@ -562,6 +567,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div>
                         <div><strong>Київ:</strong> {{ item.send_at.strftime('%Y-%m-%d %H:%M') if item.send_at else '—' }}</div>
                         <div class="small text-muted"><strong>Час клієнта:</strong> {{ item.send_at_user_time.strftime('%Y-%m-%d %H:%M') if item.send_at_user_time else '—' }}</div>
+                        {% if scheduled_view_paths[item.id] %}
+                        <div class="small">
+                            <a href="{{ scheduled_view_paths[item.id] }}" target="_blank">Посилання на файл</a>
+                        </div>
+                        {% endif %}
                     </div>
                     <div class="d-flex align-items-center gap-2">
                         <span class="badge {% if status_value == 'pending' %}bg-warning text-dark{% elif status_value == 'sent' %}bg-success{% elif status_value == 'cancelled' %}bg-secondary{% else %}bg-danger{% endif %}">
@@ -656,15 +666,17 @@ document.addEventListener('DOMContentLoaded', function() {
         <hr class="my-4">
 
         <h4><i class="fas fa-history"></i> Історія відправок файлів</h4>
-        {% set history = (user.training_file_history or []) | sort(attribute='sent_at', reverse=True) %}
+        {% set history = history_view %}
         {% if history %}
         <ul class="list-group mb-3">
             {% for item in history %}
             <li class="list-group-item d-flex justify-content-between align-items-center">
                 <div>
                     <div class="fw-bold">{{ item.filename }}</div>
-                    {% if item.file_url %}
-                    <div class="small text-muted">{{ item.file_url }}</div>
+                    {% if item.view_path %}
+                    <div class="small text-muted">
+                        <a href="{{ item.view_path }}" target="_blank">Посилання на файл</a>
+                    </div>
                     {% endif %}
                 </div>
                 <span class="badge bg-light text-dark">

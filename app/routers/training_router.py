@@ -5,7 +5,6 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReplyKeyboardRemove,
-    URLInputFile,
 )
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -19,6 +18,12 @@ import datetime
 from zoneinfo import ZoneInfo
 import app.keyboards as kb
 from app.utils.text_templates import sync_get_template, get_template, format_template
+from app.utils.morning_quiz_utils import get_active_morning_quiz_for_today
+from app.utils.training_links import (
+    build_training_file_token,
+    build_training_view_url,
+    extract_training_filename,
+)
 
 import os
 import re
@@ -55,6 +60,16 @@ def _prepare_preview_for_telegram(preview_html: str) -> str:
     return "\n".join(normalized).strip()
 
 
+def _build_training_view_url_for_user(user: User) -> str | None:
+    if not user or not user.training_file_url:
+        return None
+    filename = extract_training_filename(user.training_file_url)
+    if not filename:
+        return None
+    token = build_training_file_token(user.telegram_id, filename)
+    return build_training_view_url(settings.BASE_HOST, token)
+
+
 @training_router.message(
     F.text == sync_get_template("start_training_button"), StateFilter(MainMenuState.training_menu)
 )
@@ -69,6 +84,22 @@ async def start_training(message: Message, state: FSMContext) -> None:
     ).sort("-training_started_at").to_list(1)
 
     if active_sessions:
+        training_session_id = active_sessions[0].id
+        await state.update_data(training_session_id=str(training_session_id))
+        await message.answer(
+            text="Ти вже маєш розпочате тренування",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text=await get_template("finish_training_button"),
+                            callback_data=f"finish_training_{training_session_id}",
+                        )
+                    ]
+                ]
+            ),
+        )
+        await state.set_state(TrainingState.training_started)
         return
 
     # remove reply keyboard if it exists
@@ -118,6 +149,7 @@ async def start_training(message: Message, state: FSMContext) -> None:
             ]
         ),
     )
+    await state.update_data(training_session_id=None, training_starting=False)
     await state.set_state(TrainingState.how_do_you_feel_before)
 
 
@@ -125,9 +157,15 @@ async def start_training(message: Message, state: FSMContext) -> None:
     F.text == sync_get_template("back_to_main_menu_button"), StateFilter(MainMenuState.training_menu)
 )
 async def back_to_main_menu(message: Message, state: FSMContext) -> None:
+    active_quiz = await get_active_morning_quiz_for_today(
+        message.from_user.id,
+        is_test=None,
+    )
     await message.answer(
         text=await get_template("back_to_main_menu"),
-        reply_markup=await kb.get_main_menu_keyboard(),
+        reply_markup=await kb.get_main_menu_keyboard(
+            include_morning_quiz_resume=bool(active_quiz),
+        ),
     )
     await state.set_state(MainMenuState.main_menu)
 
@@ -139,7 +177,18 @@ async def back_to_main_menu(message: Message, state: FSMContext) -> None:
 async def handle_how_do_you_feel_before(
     callback_query: CallbackQuery, state: FSMContext
 ) -> None:
+    state_data = await state.get_data()
+    if state_data.get("training_starting"):
+        await callback_query.answer()
+        return
+
+    await state.update_data(training_starting=True)
     await callback_query.answer()
+
+    try:
+        await callback_query.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
 
     # Ignore duplicate clicks if today's training session is already started
     now_utc = datetime.datetime.now(tz=ZoneInfo("UTC"))
@@ -151,6 +200,11 @@ async def handle_how_do_you_feel_before(
     ).sort("-training_started_at").to_list(1)
 
     if active_sessions:
+        await state.update_data(
+            training_session_id=str(active_sessions[0].id),
+            training_starting=False,
+        )
+        await state.set_state(TrainingState.training_started)
         return
 
     rating = callback_query.data.split("_")[-1]
@@ -163,34 +217,31 @@ async def handle_how_do_you_feel_before(
 
     await training_session.save()
     training_session_id = training_session.id
+    await state.update_data(
+        training_session_id=str(training_session_id),
+        training_starting=False,
+    )
 
     # Перевіряємо чи є файл тренування у користувача
     if user.training_file_url:
-        await callback_query.message.answer(
-            text=await get_template("sending_training_file")
-        )
-        base_host = settings.BASE_HOST
-        print(f"DEBUG: BASE_HOST = {base_host}, training_file_url = {user.training_file_url}")
-        if base_host:
-            try:
-                full_url = f"{base_host}{user.training_file_url}"
-                print(f"DEBUG: Full URL = {full_url}")
-                training_pdf = URLInputFile(
-                    url=full_url,
-                    filename="training_session.pdf",
-                )
-                
-                await callback_query.message.answer_document(
-                    document=training_pdf, caption=await get_template("here_is_your_training_file")
-                )
-                print(f"DEBUG: Successfully sent training PDF to {callback_query.from_user.id}")
-            except Exception as e:
-                print(f"Failed to send training PDF: {e}")
-                await callback_query.message.answer(
-                    text=await get_template("training_file_unavailable")
-                )
+        training_view_url = _build_training_view_url_for_user(user)
+        if training_view_url:
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="Відкрити тренування 🏋️",
+                            url=training_view_url,
+                        )
+                    ]
+                ]
+            )
+            await callback_query.message.answer(
+                text=await get_template("here_is_your_training_file"),
+                reply_markup=keyboard,
+                disable_web_page_preview=True,
+            )
         else:
-            print("DEBUG: BASE_HOST is empty or None")
             await callback_query.message.answer(
                 text=await get_template("training_file_unavailable")
             )
@@ -229,6 +280,14 @@ async def finish_training(callback_query: CallbackQuery, state: FSMContext) -> N
     if not training_session:
         await callback_query.message.answer(await get_template("training_not_found"))
         return
+    if training_session.training_ended_at is not None:
+        await callback_query.answer()
+        return
+
+    try:
+        await callback_query.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
 
     training_session.training_ended_at = datetime.datetime.now(
         tz=ZoneInfo("UTC")  # Використовуємо UTC
@@ -330,6 +389,9 @@ async def handle_how_hard_was_training(
     if not training_session:
         await callback_query.message.answer(await get_template("training_not_found"))
         return
+    if training_session.how_hard_was_training is not None:
+        await callback_query.answer()
+        return
 
     training_session.how_hard_was_training = int(rating)
     await training_session.save()
@@ -368,6 +430,9 @@ async def handle_do_you_have_any_pain(
 
     if not training_session:
         await callback_query.message.answer(await get_template("training_not_found"))
+        return
+    if training_session.do_you_have_any_pain is not None:
+        await callback_query.answer()
         return
 
     training_session.do_you_have_any_pain = answer == "yes"
@@ -473,9 +538,15 @@ async def handle_do_you_have_any_pain(
     training_session.completed = True
     await training_session.save()
 
+    active_quiz = await get_active_morning_quiz_for_today(
+        callback_query.from_user.id,
+        is_test=None,
+    )
     await callback_query.message.answer(
         text=await get_template("back_to_main_menu"),
-        reply_markup=await get_main_menu_keyboard(),
+        reply_markup=await get_main_menu_keyboard(
+            include_morning_quiz_resume=bool(active_quiz),
+        ),
     )
 
     await callback_query.answer()
@@ -492,6 +563,9 @@ async def after_training_quiz(callback_query: CallbackQuery, state: FSMContext) 
 
     if not training_session:
         await callback_query.message.answer(await get_template("training_not_found"))
+        return
+    if training_session.do_you_have_soreness is not None:
+        await callback_query.answer()
         return
 
     await callback_query.message.edit_text(
@@ -527,6 +601,9 @@ async def handle_do_you_have_soreness(
 
     if not training_session:
         await callback_query.message.answer(await get_template("training_not_found"))
+        return
+    if training_session.do_you_have_soreness is not None:
+        await callback_query.answer()
         return
 
     training_session.do_you_have_soreness = answer == "yes"
@@ -599,6 +676,9 @@ async def handle_stress_level(callback_query: CallbackQuery, state: FSMContext) 
     if not training_session:
         await callback_query.message.answer(await get_template("training_not_found"))
         return
+    if training_session.stress_level is not None:
+        await callback_query.answer()
+        return
 
     training_session.stress_level = stress_level
     await training_session.save()
@@ -606,9 +686,15 @@ async def handle_stress_level(callback_query: CallbackQuery, state: FSMContext) 
     # After training quiz completed - notification will be automatically deleted by scheduler
     print(f"After-training quiz completed for user {callback_query.from_user.id}")
 
+    active_quiz = await get_active_morning_quiz_for_today(
+        callback_query.from_user.id,
+        is_test=None,
+    )
     await callback_query.message.answer(
         text=await get_template("thanks_for_your_training_feedback"),
-        reply_markup=await get_main_menu_keyboard(),
+        reply_markup=await get_main_menu_keyboard(
+            include_morning_quiz_resume=bool(active_quiz),
+        ),
     )
 
     await callback_query.answer()
@@ -618,20 +704,46 @@ async def handle_stress_level(callback_query: CallbackQuery, state: FSMContext) 
 
 @training_router.callback_query(F.data == "preview_training")
 async def preview_training(callback_query: CallbackQuery) -> None:
-    user = await User.find_one(User.telegram_id == str(callback_query.from_user.id))
-    
-    if not user:
-        await callback_query.message.answer(
-            text="❌ Тренування не знайдено. Зверніться до адміністратора."
+    if callback_query.message:
+        try:
+            await callback_query.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+    await callback_query.answer()
+
+    async def send_with_menu(text: str, *, parse_mode: str | None = None) -> None:
+        active_quiz = await get_active_morning_quiz_for_today(
+            callback_query.from_user.id,
+            is_test=None,
         )
-        await callback_query.answer()
+        reply_markup = await get_main_menu_keyboard(
+            include_morning_quiz_resume=bool(active_quiz),
+        )
+        if callback_query.message:
+            await callback_query.message.answer(
+                text=text,
+                parse_mode=parse_mode,
+                disable_web_page_preview=True,
+                reply_markup=reply_markup,
+            )
+            return
+        await callback_query.bot.send_message(
+            chat_id=callback_query.from_user.id,
+            text=text,
+            parse_mode=parse_mode,
+            disable_web_page_preview=True,
+            reply_markup=reply_markup,
+        )
+
+    user = await User.find_one(User.telegram_id == str(callback_query.from_user.id))
+
+    if not user:
+        await send_with_menu("❌ Тренування не знайдено. Зверніться до адміністратора.")
         return
 
     if not user.training_file_url:
-        await callback_query.message.answer(
-            text="❌ Тренування не знайдено. Зверніться до тренера."
-        )
-        await callback_query.answer()
+        await send_with_menu("❌ Тренування не знайдено. Зверніться до тренера.")
         return
 
     if not user.training_preview:
@@ -642,15 +754,11 @@ async def preview_training(callback_query: CallbackQuery) -> None:
                 "Зверніться до тренера, щоб оновити файл."
             )
 
-        await callback_query.message.answer(text=message)
-        await callback_query.answer()
+        await send_with_menu(message)
         return
 
     preview_text = _prepare_preview_for_telegram(user.training_preview)
-    await callback_query.answer()
-
-    await callback_query.message.answer(
-        text=f"🏋️ Превʼю твого тренування:\n\n{preview_text}",
+    await send_with_menu(
+        f"🏋️ Превʼю твого тренування:\n\n{preview_text}",
         parse_mode="HTML",
-        disable_web_page_preview=True,
     )
