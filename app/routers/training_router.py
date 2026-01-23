@@ -149,6 +149,7 @@ async def start_training(message: Message, state: FSMContext) -> None:
             ]
         ),
     )
+    await state.update_data(training_session_id=None, training_starting=False)
     await state.set_state(TrainingState.how_do_you_feel_before)
 
 
@@ -177,7 +178,7 @@ async def handle_how_do_you_feel_before(
     callback_query: CallbackQuery, state: FSMContext
 ) -> None:
     state_data = await state.get_data()
-    if state_data.get("training_starting") or state_data.get("training_session_id"):
+    if state_data.get("training_starting"):
         await callback_query.answer()
         return
 

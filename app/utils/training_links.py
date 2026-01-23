@@ -6,14 +6,20 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from itsdangerous import (
+    BadSignature,
+    SignatureExpired,
+    URLSafeSerializer,
+    URLSafeTimedSerializer,
+)
 
 load_dotenv()
 
 TRAINING_FILE_TOKEN_SALT = "training-file"
 DEFAULT_TRAINING_FILE_TOKEN_TTL_SECONDS = 86400
 SECRET = os.environ.get("WEB_APP_SESSION_SECRET", "your_session_secret")
-_serializer = URLSafeTimedSerializer(SECRET)
+_stable_serializer = URLSafeSerializer(SECRET)
+_timed_serializer = URLSafeTimedSerializer(SECRET)
 
 
 def _get_training_file_token_ttl_seconds() -> int:
@@ -36,16 +42,19 @@ def extract_training_filename(file_url: Optional[str]) -> Optional[str]:
 
 def build_training_file_token(telegram_id: str, filename: str) -> str:
     safe_filename = Path(filename).name
-    return _serializer.dumps(
+    return _stable_serializer.dumps(
         {"telegram_id": str(telegram_id), "filename": safe_filename},
         salt=TRAINING_FILE_TOKEN_SALT,
     )
 
 
 def parse_training_file_token(token: str, max_age: Optional[int] = None) -> dict:
-    if max_age is None:
-        max_age = _get_training_file_token_ttl_seconds()
-    return _serializer.loads(token, salt=TRAINING_FILE_TOKEN_SALT, max_age=max_age)
+    try:
+        return _stable_serializer.loads(token, salt=TRAINING_FILE_TOKEN_SALT)
+    except BadSignature:
+        if max_age is None:
+            max_age = _get_training_file_token_ttl_seconds()
+        return _timed_serializer.loads(token, salt=TRAINING_FILE_TOKEN_SALT, max_age=max_age)
 
 
 def build_training_view_path(token: str) -> str:
