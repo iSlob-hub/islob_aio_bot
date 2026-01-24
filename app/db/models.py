@@ -32,6 +32,7 @@ class User(Document):
     training_preview_generated_at: Optional[datetime] = None
     training_preview_error: Optional[str] = None
     training_file_history: Optional[List[TrainingFileHistory]] = None
+    training_file_notification_sent: Optional[bool] = None
     
     # Timezone settings
     country: Optional[str] = "Україна"  # Country name

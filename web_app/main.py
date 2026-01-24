@@ -413,6 +413,17 @@ async def user_profile(request: Request, telegram_id: str = Query(...), user: Us
         key=lambda item: item.sent_at,
         reverse=True,
     )
+    current_filename = extract_training_filename(user_profile.training_file_url)
+    training_file_notification_sent = user_profile.training_file_notification_sent
+    if user_profile.training_file_url and training_file_notification_sent is None:
+        training_file_notification_sent = False
+        for item in history_items:
+            if item.file_url and item.file_url == user_profile.training_file_url:
+                training_file_notification_sent = True
+                break
+            if current_filename and item.filename == current_filename:
+                training_file_notification_sent = True
+                break
     history_view = [
         {
             "filename": item.filename,
@@ -441,6 +452,7 @@ async def user_profile(request: Request, telegram_id: str = Query(...), user: Us
             "training_file_view_path": training_file_view_path,
             "scheduled_view_paths": scheduled_view_paths,
             "history_view": history_view,
+            "training_file_notification_sent": training_file_notification_sent,
         }
     )
 
@@ -469,6 +481,7 @@ async def upload_training_file(
     file_url = f"/files/{user_telegram_id}/{safe_filename}"
 
     recipient.training_file_url = file_url
+    recipient.training_file_notification_sent = False
     recipient.training_preview = None
     recipient.training_preview_generated_at = None
     recipient.training_preview_error = None
@@ -575,6 +588,7 @@ async def delete_training_file(
     recipient.training_preview = None
     recipient.training_preview_generated_at = None
     recipient.training_preview_error = None
+    recipient.training_file_notification_sent = None
     await recipient.save()
 
     redirect_url = (
@@ -757,6 +771,7 @@ async def notify_training_assigned(
         if not recipient.training_file_history:
             recipient.training_file_history = []
         recipient.training_file_history.append(history_entry)
+        recipient.training_file_notification_sent = True
         await recipient.save()
 
         logger.info(f"✅ Training notification sent to user {telegram_id}")

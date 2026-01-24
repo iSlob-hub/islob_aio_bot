@@ -453,6 +453,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 {% else %}
                 <span class="ms-2">{{ user.training_file_url.split('/')[-1] }}</span>
                 {% endif %}
+                {% if training_file_notification_sent %}
+                <span class="badge bg-success ms-2">Повідомлення вже відправлено</span>
+                {% else %}
+                <span class="badge bg-warning text-dark ms-2">Повідомлення ще не відправлено</span>
+                {% endif %}
             </div>
             <button class="btn btn-outline-dark btn-sm"
                     onclick="navigator.clipboard.writeText(window.location.origin + '{{ training_file_view_path or '' }}')"

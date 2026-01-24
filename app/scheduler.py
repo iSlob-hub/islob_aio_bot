@@ -330,7 +330,7 @@ class BotScheduler:
 
     async def send_too_long_training_notification(self):
         now_utc = datetime.now(ZoneInfo("Europe/Kyiv"))
-        cutoff = now_utc - timedelta(hours=1)  # Змінено з hours=1 на minutes=5 для тестування
+        cutoff = now_utc - timedelta(hours=1, minutes=30)  # Змінено з hours=1 на minutes=5 для тестування
 
         sessions = await TrainingSession.find(
             TrainingSession.completed != True,
@@ -500,6 +500,7 @@ class BotScheduler:
                 user.training_preview = preview_html
                 user.training_preview_generated_at = now
                 user.training_preview_error = None
+                user.training_file_notification_sent = True
 
                 history_entry = TrainingFileHistory(
                     filename=filename or (file_url.split("/")[-1] if file_url else "training.pdf"),
